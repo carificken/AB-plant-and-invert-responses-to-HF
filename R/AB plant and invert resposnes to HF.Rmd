@@ -1,0 +1,406 @@
+---
+title: "AB plant and invert responses to HF"
+author: "Cari D. Ficken"
+date: "3/29/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+The goal of this project is to compare and contrast the responses of plants and invertebrates to environmental gradients. It uses the following data:
+
+
+1. __Plant occurence data__
+    + These are presence-absence data from ABMI monitoring sites sampled with the Terrestrial and Wetland protocols
+    + Sites are restricted to those classified as wetlands (bogs, fens, marshes, SOWWs, wet meadows)
+2. __Insect abundance data__
+    + These are frequency data from ABMI monitoring sites sampled with the _Wetland protocol only_.
+    + Insects were not identified at ABMI sites sampled with the Terrestrial protocol
+3. __Climatic data__
+    + These include standard measure of temperature and precip (e.g. evaporation, frost-free period, MAP, MAT...) 
+    + These are available from ABMI website
+    + We currently only have data for one year (__which?__) and for sites sampled with the wetland protocol
+4. __Human footprint data (HF)__
+    + 250 m buffer around each site
+
+
+# 1. Load vegegtation and HF datasets
+Keep only data from sites with data in both df's. 
+
+The vegetation file (`veg_pa`) includes vegetation occurrence (i.e. presence-absence) for all wetland ABMI sites in Alberta. The vegetation taxa are ID'd to species - we have excluded taxa ID'd to genus and we have also removed any finer-level classifications (e.g. subsp.).
+
+The human footprint df (`hf`) provides area estimates (km^2) of different specific human footprint types. Each type (`FEATURE_TY`) has been assigned a higher-order category (`HFCateogry`) based on ABMI's HF metadata. Sum the total disturbance of each HF Category at each site in `hf`. 
+
+```{r echo=F, warning=F, message=F}
+# load veg data
+library(tidyverse); library(cowplot)
+setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/")
+veg_pa <- read.csv("ABMI veg cleaned.csv")
+
+# load HF data 
+setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/")
+hf <- read.csv("Alb wetlands HF.csv") %>% select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
+
+# keep only data in each df for which we have BOTH data types
+keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
+                        select(ungroup(hf), NRNAME, Protocol, WetlandType, Site, Year)) %>% distinct()
+veg_pa <- left_join(keepsites, veg_pa, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+hf <- left_join(keepsites, hf, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+```
+
+Let's explore the distribution of sites. We have `r nrow(keepsites)` wetlands in total.
+
+```{r}
+keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(Protocol) %>% tally()
+keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(WetlandType) %>% tally()
+keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
+```
+
+
+# 2. Examine the human footprint (HF) data
+
+The plots below show the total land develped in each natural region, as divided by each HF Category. It also shows the proportion of total developed land in each NR that is attributed to each HF category. Note that wetlands in the Canadian Shield do not have any development in their immediate vicitinty.
+
+```{r echo=F, warning=F, message=F}
+hf <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year, HFCategory) %>% summarize(totdist_cat_km2 = sum(Area_km2))
+ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% summarize(totdist=sum(totdist_cat_km2)) %>% 
+  ggplot(aes(x=NRNAME, y=totdist, fill=HFCategory)) +
+  geom_bar(stat="identity", position = position_stack()) +
+  labs(x=NULL, y="Total Area (km2)") +
+  theme_classic() +
+  theme(legend.position = "top",
+        legend.title=element_blank())
+
+ppropdist <- hf %>% 
+  group_by(NRNAME, HFCategory) %>% 
+  summarize(totdist=sum(totdist_cat_km2)) %>% 
+  group_by(NRNAME) %>%  
+  mutate(totdist_all = sum(totdist),
+         propdist=100*totdist/totdist_all) %>% 
+  ggplot(aes(x=NRNAME, y=propdist, fill=HFCategory)) +
+  geom_bar(stat="identity", position = position_stack()) +
+  labs(x=NULL, y="Proportional Developed Area (%)") +
+  theme_classic() +
+  theme(legend.position = "top",
+        legend.title=element_blank())
+
+hfcats <- plot_grid(ptotdist + theme(legend.position = "none"),
+          ppropdist + theme(legend.position = "none"), nrow=1, ncol=2 )
+
+myleg <- get_legend(ptotdist)
+
+hfcats <- cowplot::plot_grid(myleg,
+                             hfcats,
+                             ncol=1,rel_heights = c(0.2,2))
+hfcats
+
+```
+
+Create a new df with the total human development at each site (`hf_tot`). The histogram below shows the distribution of each HF Category across all focal sites. 
+
+```{r echo=F, warning=F, message=F}
+hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>%
+  summarize(totdist_km2=sum(totdist_cat_km2))
+
+ggplot(hf_tot, aes(x=totdist_km2)) + 
+  geom_histogram(fill="grey80", color="black") + 
+  labs(x="Total Developed Area (km2)", y="Num. Wetlands") +
+  ggtitle ("Distribution of total human development in AB") +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+# 3. Calculate species sensitivity index (SSI)
+We can calculate the sensitivity of a species to HF by examining its total number of occurrences in each climate bin. To do so, we:
+
+1. Bin the continuous HG gradient into 10 bins each with a similar number of sitees (~140 sites) and assign each site to a bin
+2. Join the vegetation df (`veg_pa`) to the HF df (`hf_tot`) to create `veg_hf`
+3. Sum the number of occurrencs of each species in each bin (`occ_freq`) 
+4. Calculate the coefficient of variation (`CV`) (sd/mean) for the `occ_freq` of each species across the full HF bin gradient. For example, below we can see the occurence frequency distribution of _Typha latifolia_ across the HF gradient.
+* Exclude specices which occur only 1x in the full data set since these species will have very high sensitivity (N=34 sp which occur 1x)
+* Also be sure to expand the HF bin gradient for every species; that is we have to fill in `occ_freq` = 0 in some bins
+4. The resulting df is called `sp_SSI`
+
+
+```{r echo=F, warning=F, message=F}
+# first create 10 bins
+hf_tot$HFbin <- ntile(hf_tot$totdist_km2, n=10) 
+
+veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
+
+  veg_hf %>% 
+    group_by(HFbin,Species) %>% summarize(occ_freq=sum(PA)) %>% 
+    arrange(Species,desc(occ_freq)) %>% 
+    filter(Species=="Typha latifolia") %>% 
+    ggplot(aes(x=HFbin,y=occ_freq)) + 
+    ggtitle("Typha latifolia") +
+    geom_bar(stat="identity")
+
+  # calc occurrence freq of each sp in each bin
+  occfreq_HFbin <- veg_hf %>% 
+      group_by(HFbin,Species) %>% 
+      summarize(occ_freq=sum(PA))
+  
+  # exclude species which occur only 1x - they will have high sensitivity
+  occfreq_HFbin <- occfreq_HFbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+  
+  # expand the bin categories so each species has an occ freq value for every bin #1:10
+  occfreq_HFbin <- occfreq_HFbin %>% 
+    spread(key=HFbin, value=occ_freq) %>% 
+    gather(key=HFbin, value=occ_freq, 2:ncol(.)) %>% 
+    mutate(occ_freq=replace_na(occ_freq,0))
+  
+  # now calculate species sensitivitiy index (=CV) for each species across the gradient of HF bins
+  sp_SSI <- occfreq_HFbin %>% 
+    group_by(Species) %>%
+    summarize(CV=sd(occ_freq)/mean(occ_freq))
+```
+
+### 3.1 Relationships between species occurrence frequency and CV:
+
+The resulting df is called `sp_SSI`. We can examine the relationship between SSI and occurence frequency; we would expect common species to have low sensitivity to HF (low SSI).
+
+```{r echo=F}
+head(sp_SSI)
+
+  # relationship between cum occ freq and CV scores
+  left_join(sp_SSI, occfreq_HFbin) %>%  
+    group_by(Species, CV) %>% summarize(cum_occ_freq = sum(occ_freq)) %>% 
+    ggplot(aes(x=CV, y=cum_occ_freq)) + 
+    ggtitle("Human Footprint") +
+    geom_point() 
+```
+
+# 4. Calculate community sensitivity index (CSI)
+
+Add SSI of each species (`sp_SSI`) to the vegetation df (`veg_pa`). Calculate the mean SSI at each site (`CSI`). 
+
+```{r echo=F, message=F, warning=F}
+  veg_CSI_HF <- left_join(veg_pa, sp_SSI)
+  veg_CSI_HF <- veg_CSI_HF %>% 
+    group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
+    summarize(CSI=mean(CV, na.rm = T)) # 32 sites have na value for at least 1 sp
+  
+  veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year")) 
+
+  ggplot(veg_CSI_HF, aes(x=CSI)) +
+    geom_histogram(bins=30) 
+
+```
+
+
+# 5. Examine patterns of CSI across different wetland/site classifications gradients
+### 5.1 Comparisons between Terrestrial and Wetland Protocols
+
+Compare the distribution of CSI values for sites sampled with wetland vs terrestrial ABMI protocols.
+
+The Wetland protocol underestimates the CSI of communities at high development levels. Generally, though, communities show the highest sensitivity to development at really high development intensities. This may be because communities at high develpoment levels are composed of ruderal species that are only found under these disturbed conditions; at low development intensitities, perhaps communities are composed of more broadly distributed native species. That is, after ~0.05 km2 of development, ruderals take over.
+
+For sites sampled with the wetland protocol, there appears to be a more directional (positive) trend.  
+
+
+```{r echo=F, message=F, warning=F}
+# relationship between veg community specialization and HF
+ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=Protocol)) +
+  ggtitle("Protocol") +
+  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+  facet_wrap(~Protocol) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+### 5.2 Comparisons among wetland classes
+Patterns across wetland classes are difficult to disentangle due to vastly different sample sizes of each wetland class. Marshes, shallow lakes, and wet meadows have the most thorough representation across the full HF gradient. For these classes, there is slightly high sensitivity to development at both ends of the development spectrum. This largely parallels the pattern observed across the full dataset. For other wetland classes, sites are not distributed across the gradient sufficiently to really commpare their sensitivity.
+
+No single wetland class appears to have particularly high or low sensitivity overall. 
+
+```{r echo=F, message=F, warning=F}
+head(veg_CSI_HF)
+# relationship between veg community specialization and HF
+ggplot(veg_CSI_HF, aes(x=totdist_km2,y=CSI, color=WetlandType)) +
+  ggtitle("Wetland Class") +
+  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+  theme_classic() +
+  facet_wrap(~WetlandType) +
+  theme(legend.position = "none")
+```
+
+### 5.3 Comparisons among natural regions
+Wetlands across the natural regions vary somewhat in their exposure to human development. For example, there is essentially no development in the Canadian shield and very little in the rocky mountain NR Sites in the boreal, foothills, grassland, and parkland NRs show a greater range in human development.
+
+Rocky mountain wetlands have high sensitivty at low development intensities. Grassland wetlands maybe have higher overall sensitivity to human devleopment than wetlands in the other NRs.
+
+```{r echo=F, message=F, warning=F}
+ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
+  ggtitle("Natural Region") +
+  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+  theme_classic() +
+  facet_wrap(~NRNAME) +
+  theme(legend.position = "none")
+```
+
+# 6. Patterns of species richness across HF gradient
+Channeling the Intermediate Disturbance Hypothesis here...
+
+Species richness is somewhat elevated at intermediate human development intensitities. This supports the findings of Mayor et al 2012 (_Regional boreal biodiversity peaks at intermediate human disturbance_) which uses ABMI data to examine this pattern only in the boreal.
+
+```{r echo=F, message=F, warning=F}
+  spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
+  spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+  
+  ggplot(spR, aes(x=totdist_km2, y=rich)) +
+    labs(x="Total Human Development (km2)", y="Species Richness") +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic()
+```
+
+# 7. Examine patterns of CSI to HF across climatic gradients
+
+Now we can examine whether CSI to disturbance is mediated by mean climatic conditions. First check to ensure that HF isn't correlated with climatic conditions: it definitely is not.
+
+```{r echo=F, warning=F, message=F}
+  # load ABMI climate data
+  # clim vars - extracted from ABMI data; locations inaccurate
+  {
+    setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/climate/")
+    clim <- read.csv("ABMI terrestrial + wetland sites climate.csv") %>% select(-Year, -Latitude, -Longitude)
+    
+    # remove "W-" from climate sites
+    clim$ABMI.Site <- clim$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
+    
+    # create ABMI main site matching ID in veg_pa (veg pa has sites w/ extra numbers at end)
+    veg_pa$tmpSiteMatch <- paste(str_extract(string=veg_pa$Site, pattern="OG-"), str_extract(string=veg_pa$Site, pattern="\\d+"), sep="") 
+    veg_pa$tmpSiteMatch <- veg_pa$tmpSiteMatch %>% str_remove(pattern="NA")
+    
+    # sites to keep
+    sites <- veg_pa %>% 
+      ungroup() %>% 
+      select(Protocol, NRNAME, WetlandType, Site, tmpSiteMatch,Year) %>% distinct()
+
+    clim2 <- left_join(sites,clim, by=c("Protocol", "tmpSiteMatch"="ABMI.Site")) %>% select(-tmpSiteMatch)
+    
+    # clim2 %>% gather(key=ClimateVar, value=Value, 6:ncol(clim2)) %>%
+    #   ggplot(aes(x=Value, fill=ClimateVar)) +
+    #   geom_histogram(bins=30) +
+    #   facet_wrap(~ClimateVar, scales="free") + theme_classic() + theme(legend.position="none")
+}
+
+  left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
+    gather(key="ClimVar", value=Value, 9:ncol(.)) %>% 
+    ggplot(aes(x=totdist_km2, y=Value, color=ClimVar)) +
+    geom_point(alpha=0.5) +
+    facet_wrap(~ClimVar, scales="free_y") +
+    # geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() +
+    theme(legend.position = "none")
+  
+```
+
+Next we can compare patterns of CSI and climatic conditoins. There is an insufficient gradient in MAP or summer precip to really compare CSI across these variables. There are relationships between CSI and CMD (climatic moisture defecit), and with MAT: communities are relatively more sensitive to human development at either either ends of each climatic gradient. There is a general positive relationship between CSI and CMD, FFP, and MAT, indicating that communities are more sensitive to development in warmer, drier areas. This has important implications for climate change.
+
+```{r echo=F, message=F, warning=F}
+  cmd <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
+      ggplot(aes(x=climatic_moisture_defecit, y=CSI)) +
+      geom_point(alpha=0.5) + 
+      geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+      theme_classic() 
+
+  ffp <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
+    ggplot(aes(x=FFP, y=CSI)) +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() 
+  
+  map <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year"))%>% 
+    ggplot(aes(x=MAP, y=CSI)) +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() 
+  
+  mat <- left_join(veg_CSI_HF, clim2,by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
+    ggplot(aes(x=MAT, y=CSI)) +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() 
+  
+  summer_precip <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>%
+    ggplot(aes(x=summer_precip, y=CSI)) +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() 
+  
+plot_grid(cmd, ffp, map, mat, summer_precip, nrow=3, ncol=2)
+
+```
+
+# 8. Choosing the most predictive variables
+How can we chose the most appropriate variablesl to describe community sensitivty? Use regression trees and/or random forest. To predict the community sensitivity index (CSI), use the following predictors
+
+* Protocol (terrestrial vs wetland)
+* Natural region
+* Wetland class
+* Site-level species richness
+* Climate variables
+
+Regression tree predicting CSI - MAT
+
+```{r echo=F, message=F, warning=F}
+library(rpart); library(rpart.plot)
+
+# add climate data
+predvars <- left_join(veg_CSI_HF, clim2, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year")) 
+
+# add species richness data
+predvars <- inner_join(predvars, spR, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year", "totdist_km2")) %>% distinct()
+
+
+# convert factors to factor (from character)
+predvars$Protocol <- as.factor(predvars$Protocol)
+predvars$NRNAME <- as.factor(predvars$NRNAME)
+predvars$WetlandType <- as.factor(predvars$WetlandType)
+
+# grow tree
+predvar_fit <- rpart(CSI ~ Protocol + NRNAME + WetlandType + rich + climatic_moisture_defecit + MAT + MAP + FFP + summer_precip, 
+                     data=predvars, method="anova")
+
+# pick tree that minimizes miss-classification rate (prediction error); 
+# we want cp values that minimizes xerror
+bestcp <- predvar_fit$cptable[which.min(predvar_fit$cptable[,"xerror"]),"CP"]
+# prune tree usinging bestcp
+predvar_fit.pruned <- prune(predvar_fit, cp = bestcp)
+
+# plot tree 
+prp(predvar_fit.pruned, faclen = 0, cex = 0.8, extra = 1)
+
+```
+
+Now grow a random forest to compare the importance of each predictor.
+
+```{r echo=F, message=F, warning=F}
+# random forest
+library(randomForest)
+  fit <- randomForest(CSI ~ Protocol + NRNAME + WetlandType + rich + climatic_moisture_defecit + MAT + MAP + FFP + summer_precip, 
+                      data=predvars,
+                      ntree=1000, replace=T)
+
+importance(fit) # importance of each predictor
+# mean(fit$rsq)
+```
+The final tree's pseudo-R^2^ = `r round(mean(fit$rsq), 2)`.
+
+
+
+
+
