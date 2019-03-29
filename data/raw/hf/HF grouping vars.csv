@@ -1,0 +1,134 @@
+﻿FEATURE_TY,HFCategory
+ACREAGE,Residential and Recreation
+AGRICULTURE_CLEARING,Agriculture
+BORROWPIT-DRY,Energy and Mining
+borrowpits,Energy and Mining
+BorrowpitsDugoutsSumps,Energy and Mining
+BorrowpitsDugoutsSumpsLagoons,Energy and Mining
+canal,Agriculture
+Canals,Agriculture
+CFO,Commercial and Industrial
+CLEARING-UNKNOWN,Commercial and Industrial
+country-residence,Residential and Recreation
+CROP,Agriculture
+Cultivation,Agriculture
+CULTIVATION_ABANDONED,Agriculture
+CultivationAbandoned,Agriculture
+CultivationCrop,Agriculture
+CultivationRoughPasture,Agriculture
+CultivationTamePasture,Agriculture
+CUTBLOCK,Forestry
+CUTLINE_TRAIL,Transportation
+CUTLINE-TRAIL,Transportation
+DISTURB_VEG,Residential and Recreation
+DUGOUT,Energy and Mining
+ForestHarvest,Forestry
+ForestHarvestArea,Forestry
+GRVL-SAND-PIT,Energy and Mining
+HARVEST-AREA,Forestry
+HighDensityLivestockOperation,Commercial and Industrial
+IND-HIGH,Commercial and Industrial
+IND-LOW,Commercial and Industrial
+IndustrialSiteRural,Commercial and Industrial
+IndustrialSites,Commercial and Industrial
+interchange-ramp,Transportation
+Lagoon,Residential and Recreation
+LOW-IMPACT-SEISMIC,Energy and Mining
+MINES,Energy and Mining
+MINES-DISTURBED-NO-VEG,Energy and Mining
+MINES-DISTURBED-VEG,Energy and Mining
+MINES-PITLAKE,Energy and Mining
+MineSite,Energy and Mining
+MineSites,Energy and Mining
+MunicipalWaterSewage,Energy and Mining
+OIL-GAS-PLANT,Commercial and Industrial
+OPEN-PIT-MINE,Energy and Mining
+OtherDisturbedVegetation,Residential and Recreation
+OtherVegAreas,Residential and Recreation
+PeatMine,Energy and Mining
+Pipeline,Energy and Mining
+pipeline-intersection,Energy and Mining
+Pipelines,Energy and Mining
+PRE-LOW-IMPACT-SEISMIC,Energy and Mining
+RailHardSurface,Transportation
+Rails,Transportation
+RailVegetatedVerge,Transportation
+RECREATION,Residential and Recreation
+RESERVOIR,Commercial and Industrial
+Reservoirs,Commercial and Industrial
+RESIDENCE_CLEARING,Residential and Recreation
+Residences,Residential and Recreation
+rlwy-abandoned,Transportation
+rlwy-former,Transportation
+rlwy-sgl-track,Transportation
+rlwy-spur,Transportation
+ROAD-GRAVEL-1L,Transportation
+ROAD-GRAVEL-2L,Transportation
+ROAD-PAVED,Transportation
+road-paved-1l,Transportation
+road-paved-2l,Transportation
+road-paved-4l,Transportation
+ROAD-PAVED-DIV,Transportation
+ROAD-PAVED-UNDIV-1L,Transportation
+ROAD-PAVED-UNDIV-2L,Transportation
+road-paved-undiv-4l,Transportation
+ROAD-UNCLASSIFIED,Transportation
+ROAD-UNIMPROVED,Transportation
+road-unpaved-2l,Transportation
+RoadHardSurface,Transportation
+Roads,Transportation
+RoadTrailVegetated,Transportation
+RoadVegetatedVerge,Transportation
+ROUGH_PASTURE,Agriculture
+RURAL_1-5ha,Residential and Recreation
+RURAL_GT_5ha,Residential and Recreation
+RURAL_LESS_1ha,Residential and Recreation
+RURAL-RESIDENCE,Residential and Recreation
+RuralResidentialIndustrial,Commercial and Industrial
+SeismicLineNarrow,Energy and Mining
+SeismicLines,Energy and Mining
+SeismicLineWide,Energy and Mining
+soft_interchange-ramp,Transportation
+soft_rlwy-abandoned,Transportation
+soft_rlwy-sgl-track,Transportation
+soft_rlwy-spur,Transportation
+SOFT_ROAD-GRAVEL-1L,Transportation
+SOFT_ROAD-GRAVEL-2L,Transportation
+SOFT_ROAD-PAVED-DIV,Transportation
+SOFT_ROAD-PAVED-UNDIV-1L,Transportation
+SOFT_ROAD-PAVED-UNDIV-2L,Transportation
+SUMPS,Energy and Mining
+surrounding-veg,Residential and Recreation
+TAILING-PILE,Energy and Mining
+TAME_PASTURE,Agriculture
+TRAIL,Transportation
+TRAIL-ATV,Transportation
+TRAIL-ATV-INDEFINITE,Transportation
+TRANS-LINE,Energy and Mining
+TransmissionLine,Energy and Mining
+transmission-line,Energy and Mining
+TRUCK-TRAIL,Transportation
+URBAN_RESIDENCE,Residential and Recreation
+urban-industrial,Commercial and Industrial
+urban-residence,Residential and Recreation
+UrbanIndustrial,Commercial and Industrial
+UrbanResidence,Residential and Recreation
+veg-surface-overlap,Residential and Recreation
+vegetated-edge-railways,Transportation
+VEGETATED-EDGE-ROADS,Transportation
+VegetatedEdges,Transportation
+WELL,Energy and Mining
+WELL_MODEL_FOREST,Energy and Mining
+WELL-ABAND,Energy and Mining
+WELL-BIT,Energy and Mining
+WELL-GAS,Energy and Mining
+WELL-GAS-ABAND,Energy and Mining
+WELL-OIL,Energy and Mining
+WELL-OIL-ABAND,Energy and Mining
+WELL-SPOT07,Energy and Mining
+WELL-WATER,Energy and Mining
+WELL-WATER-ABAND,Energy and Mining
+WellSite,Energy and Mining
+WellSites,Energy and Mining
+WindGenerationFacility,Energy and Mining
+windmills,Energy and Mining
