@@ -1,10 +1,10 @@
 ---
 title: "AB plant and invert responses to HF"
 author: "Cari D. Ficken"
-date: "3/29/2019"
+date: "`r Sys.Date()`"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 The goal of this project is to compare and contrast the responses of plants and invertebrates to environmental gradients. It uses the following data:
