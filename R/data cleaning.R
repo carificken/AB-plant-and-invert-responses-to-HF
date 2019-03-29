@@ -938,8 +938,16 @@ hf_alb %>% distinct() %>% dim()
     filter(!is.na(WetlandType)) %>% 
     distinct(Protocol, Site) %>% dim() # 1126 wetlands with HF data
   
-  hf_alb_wetlands <- left_join(hf_alb, wetlandclassification_all, by=c("Protocol", "Site")) %>% 
-    filter(!is.na(WetlandType))
+  # combine wetland classifications
+  wetlandclassification_all <- bind_rows(wetlandclassification, wetlandclassification_wetland)
+  wetlandclassification_all %>% distinct(Site) %>% dim()
+  
+  hf_alb_wetlands <- left_join(hf_alb, wetlandclassification_all, by=c("Protocol", "Site")) 
+  tmp <- filter(hf_alb_wetlands, is.na(WetlandType) & Protocol=="Wetland") # wetland sites w/o classification are SOWWs
+  tmp$WetlandType <- "Shallow Lake"
+  hf_alb_wetlands <- hf_alb_wetlands %>% filter(!is.na(WetlandType)) # excludes wetland and terrestrial sites without classification
+
+  hf_alb_wetlands <- bind_rows(hf_alb_wetlands,tmp) # adds SOWWs back to dataset
 
 }
 
