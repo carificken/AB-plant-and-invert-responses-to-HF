@@ -1,0 +1,1562 @@
+---
+title: "AB plant and invert responses to disturbance"
+author: "Cari D. Ficken"
+date: "3/12/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+The goal of this project is to compare and contrast the responses of plants and insects to environmental gradients. It uses the following data:
+
+
+1. __Plant occurence data__
+    + These are presence-absence data from ABMI monitoring sites sampled with the Terrestrial and Wetland protocols
+    + Sites are restricted to those classified as wetlands (bogs, fens, marshes, SOWWs, wet meadows)
+2. __Insect abundance data__
+    + These are frequency data from ABMI monitoring sites sampled with the _Wetland protocol only_.
+    + Insects were not identified at ABMI sites sampled with the Terrestrial protocol
+3. __Climatic data__
+    + These include standard measure of temperature and precip (e.g. evaporation, frost-free period, MAP, MAT...) 
+    + These are fromavailable from ABMI via Martin
+    + We currently only have data for one year (__which?__) and for sites sampled with the wetland protocol
+    + Must request climate data for sites sampled with Terrestrial protocol
+4. __Human footprint data (HF)__
+    + We now only have data for grassland sites sampled with Wetland protocol & boreal sites sampled with both protocols; we are missing HF data for grassland sites sampled with Terrestrial procotol
+
+
+# 1. Load vegegtation datasets
+
+```{r echo=F, warning=F, message=F}
+library(tidyverse)
+# vascular plants - terrestrial sites
+{
+  setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
+  vascplant_pa <- read.csv("A_T15_Vascular_Plants.csv", row.names = NULL)
+  names(vascplant_pa) <- colnames(vascplant_pa[,2:ncol(vascplant_pa)])
+  vascplant_pa <- vascplant_pa[2:ncol(vascplant_pa)-1]
+
+  vascplant_pa <- vascplant_pa %>% 
+    select(Site="ABMI.Site",Year,Species="Scientific.Name")
+  vascplant_pa <- filter(vascplant_pa, Year!=2017)
+  
+  vascplant_pa <- vascplant_pa %>% filter(Species!="NONE" &
+                                            Species!="VNA" &
+                                            Species!="SNI" &
+                                            Species!="DNC")
+  vascplant_pa <- droplevels(vascplant_pa)
+  vascplant_pa %>% summarize(NSites = length(unique(Site))) #1207 terrestrial sites
+  vascplant_pa$Protocol <- "Terrestrial"
+  vascplant_pa <- vascplant_pa %>% select(Protocol, everything())
+} 
+
+# vascular plants - wetland sites 
+{
+  setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data")
+  wet_vascplant_pa <- read.csv("A_W05_Vascular_Plants.csv", row.names = NULL)
+  
+  # clean plant data set
+  wet_vascplant_pa <- wet_vascplant_pa %>% select(Site=ABMI.Site,
+                                                  Year=Year,
+                                                  Species=Scientific.Name)
+  
+  wet_vascplant_pa <- wet_vascplant_pa %>% filter(Species!="NONE" &
+                                                    Species!="VNA" &
+                                                    Species!="SNI" &
+                                                    Species!="DNC")
+  wet_vascplant_pa %>% summarize(NSites = length(unique(Site))) # 1044 wetland sites with plant p/a
+  wet_vascplant_pa$Protocol <- "Wetland"
+  wet_vascplant_pa <- wet_vascplant_pa %>% select(Protocol, everything())
+}
+
+# combine both veg datasets
+{
+  plant_pa <- bind_rows(vascplant_pa,wet_vascplant_pa)
+  
+  # round every taxa to sp; keep only taxa ID'd to species
+  plant_pa$Species <- plant_pa$Species %>% word(start=1, end=2)
+  
+  # make site x species matrix
+  # first create a full sitexspecies matrix for moss dataset
+  plant_pa$PA <- 1
+  
+  # remove species that are duplicated b/c they were present in multiple zones, or b/c there taxa ID'd past species
+  plant_pa <- plant_pa %>% distinct()
+  plant_pa <- plant_pa %>% filter(!is.na(Species))
+
+  # exclude singletons
+  sptokeep <- plant_pa %>% group_by(Species) %>% tally() %>% filter(n>1) %>% select(Species)
+  plant_pa <- plant_pa %>% filter(Species %in% sptokeep$Species)    
+
+}
+
+# load and clean wetland classification - terrestrial sites
+{
+  setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
+  siteclass <- read.csv("A_T01C_Site_Capability.csv")
+  # remove missing classificaiton values, and only retain the dominant site classification
+  levels(siteclass$Percent.Area.of.Ecological.Site.Classification)
+  siteclass <- siteclass %>% filter(Percent.Area.of.Ecological.Site.Classification!="VNA" & 
+                                      Percent.Area.of.Ecological.Site.Classification!="DNC",
+                                    Percent.Area.of.Ecological.Site.Classification!="PNA")
+  siteclass <- droplevels(siteclass)
+  siteclass$Percent.Area.of.Ecological.Site.Classification <- as.numeric(levels(siteclass$Percent.Area.of.Ecological.Site.Classification))[siteclass$Percent.Area.of.Ecological.Site.Classification]
+  
+  # separate sites by wetland type
+  bogsites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(08) PD") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  poorfensites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(09) MD") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  richfensites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(10) RDp" ) %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  wetmeadowsites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(10.5) RDm") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  marshsites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(11) VD") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  swampsites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(12) SD") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  alkalifensites <- siteclass %>% filter(Ecosite...Nutrient.Moisture.Code == "(13) AD") %>% select(Site="ABMI.Site", Cover=Percent.Area.of.Ecological.Site.Classification)
+  
+  # add wetland type ID and combine datasets
+  bogsites$WetlandType <- "Bog"
+  poorfensites$WetlandType <- "Poor Fen"
+  richfensites$WetlandType <- "Rich Fen"
+  alkalifensites$WetlandType <- "Alkali Fen"
+  wetmeadowsites$WetlandType <- "Wet Meadow"
+  marshsites$WetlandType <- "Marsh"
+  swampsites$WetlandType <- "Swamp"
+  
+  wetlandclassification <- rbind(bogsites,
+                                 poorfensites,
+                                 richfensites,
+                                 alkalifensites,
+                                 wetmeadowsites,
+                                 marshsites,
+                                 swampsites)
+
+  # how many repeated site classifications are there
+  wetlandclassification <- wetlandclassification %>% group_by(Site, WetlandType) %>% summarize(meanCover=mean(Cover))
+  wetlandclassification %>% mutate(NWetlandClasses=length(WetlandType)) %>% filter(NWetlandClasses>1) %>% arrange(desc(NWetlandClasses))
+  
+  # note: many sites have multiple ecosite classifications; must take the DOMINANT classification
+  wetlandclassification <- wetlandclassification %>% group_by(Site) %>% filter(meanCover==max(meanCover)) %>% select(Site, WetlandType)
+
+  # amend manually
+  wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
+  wetlandclassification[wetlandclassification$Site=="122","WetlandType"]  <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site=="1313","WetlandType"]  <- "Swamp"
+  wetlandclassification[wetlandclassification$Site=="270","WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site=="508","WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site=="529","WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site=="599","WetlandType"] <- "Swamp"
+  wetlandclassification[wetlandclassification$Site=="63","WetlandType"] <- "Wet Meadow"
+  wetlandclassification[wetlandclassification$Site=="652","WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site=="729","WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site=="992","WetlandType"] <- "Swamp"
+  wetlandclassification[wetlandclassification$Site=="OG-ABMI-653-1","WetlandType"]  <- "Swamp"
+  
+  wetlandclassification[wetlandclassification$Site=="625","WetlandType"] <- "Bog"
+  
+  # Fen x Marsh >> marsh
+  wetlandclassification[wetlandclassification$Site=="1393","WetlandType"] <- "Marsh"
+  wetlandclassification[wetlandclassification$Site==791,"WetlandType"] <- "Marsh"
+  wetlandclassification[wetlandclassification$Site=="OG-SRD-1239-1","WetlandType"] <- "Marsh"
+  
+  # Bog x Marsh >> marsh
+  wetlandclassification[wetlandclassification$Site=="OG-ABMI-1175-1","WetlandType"] <- "Marsh"
+  
+  # Bog x Fen >> Fen
+  wetlandclassification[wetlandclassification$Site==292,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==295,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==352,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==418,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==442,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==497,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==498,"WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site==561,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==627,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==631,"WetlandType"] <- "Rich Fen"
+  wetlandclassification[wetlandclassification$Site==728,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site==759,"WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site=="OG-ABMI-571-21","WetlandType"] <- "Poor Fen"
+  wetlandclassification[wetlandclassification$Site=="OG-ABMI-510-21","WetlandType"] <- "Poor Fen"
+  
+  # Fen x WetMeandow
+  wetlandclassification[wetlandclassification$Site==63,"WetlandType"] <- "Wet Meadow"
+  
+  # Bog x Swamp 
+  wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
+  
+  
+  # delete repeated Site classificaitons
+  wetlandclassification <- wetlandclassification %>% distinct(Site, WetlandType)
+  
+  # check to make sure each site has only 1 wetland classification
+  wetlandclassification %>% select(Site) %>% unique() %>% nrow() # 586 unique sites
+  wetlandclassification %>% select(Site, WetlandType) %>% unique() %>% nrow() # 586 unique site x wetlandtypes
+  wetlandclassification$Protocol <- "Terrestrial"
+}
+  
+# load and clean wetland classification - wetland sites
+{
+    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data")
+    siteclass_wet <- read.csv("A_W02B_Site_Capability.csv")
+    # remove missing classificaiton values, and only retain the dominant site classification
+    siteclass_wet <- siteclass_wet %>% filter(Ecosite...Nutrient.Moisture.Code!="DNC" & 
+                                                Ecosite...Nutrient.Moisture.Code!="NONE",
+                                              Ecosite...Nutrient.Moisture.Code!="VNA")
+    siteclass_wet <- droplevels(siteclass_wet)
+ # siteclass_wet$Percent.Area.of.Ecological.Site.Classification <- as.numeric(levels(siteclass_wet$Percent.Area.of.Ecological.Site.Classification))[siteclass_wet$Percent.Area.of.Ecological.Site.Classification]
+    
+# separate sites by wetland type
+bogsites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(08) PD") %>% select(Site="ABMI.Site")
+poorfensites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(09) MD") %>% select(Site="ABMI.Site")
+richfensites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(10) RDp" ) %>% select(Site="ABMI.Site")
+wetmeadowsites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(10.5) RDm") %>% select(Site="ABMI.Site")
+marshsites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(11) VD") %>% select(Site="ABMI.Site")
+swampsites_wetland <- siteclass_wet %>%
+  filter(Ecosite...Nutrient.Moisture.Code == "(12) SD") %>% select(Site="ABMI.Site")
+alkalifensites_wetland <- siteclass_wet %>% 
+  filter(Ecosite...Nutrient.Moisture.Code == "(13) AD") %>% select(Site="ABMI.Site")
+    
+# add wetland type ID and combine datasets
+bogsites_wetland$WetlandType <- "Bog"
+poorfensites_wetland$WetlandType <- "Poor Fen"
+richfensites_wetland$WetlandType <- "Rich Fen"
+alkalifensites_wetland$WetlandType <- "Alkali Fen"
+wetmeadowsites_wetland$WetlandType <- "Wet Meadow"
+marshsites_wetland$WetlandType <- "Marsh"
+swampsites_wetland$WetlandType <- "Swamp"
+    
+wetlandclassification_wetland <- rbind(bogsites_wetland,
+                                   poorfensites_wetland,
+                                   richfensites_wetland,
+                                   alkalifensites_wetland,
+                                   wetmeadowsites_wetland,
+                                   marshsites_wetland,
+                                swampsites_wetland)
+    
+# MANY sites have repeated site classifications; 
+# wetlandclassification_wetland <- wetlandclassification_wetland %>% distinct()
+wetlandclassification_wetland %>% group_by(Site,WetlandType) %>% tally() %>% filter(n>1) %>% arrange(desc(n))
+    
+# note: many sites have multiple ecosite classifications; must take the DOMINANT classification ie the one which occurs most often
+wetlandclassification_wetland <- wetlandclassification_wetland %>% 
+  group_by(Site,WetlandType) %>% 
+  tally() %>% ungroup() %>% group_by(Site) %>% filter(n==max(n)) %>% select(Site,WetlandType)
+    
+# we still have 33 sites w/ double split classifications; ammend manually
+wetlandclassification_wetland %>% group_by(Site) %>% tally() %>% filter(n>1) %>% arrange(desc(n)) %>% select(Site) %>% data.frame()
+    
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="207","WetlandType"] <- "Swamp"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="210","WetlandType"] <- "Swamp"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="296","WetlandType"] <- "Rich Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="390","WetlandType"] <- "Poor Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="595","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="924","WetlandType"] <- "Wet Meadow"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-628-21","WetlandType"] <- "Rich Fen"
+    
+# marsh + wet meadow >> marsh
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1057","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1333","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1363","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1370","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1429","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1435","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1611","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1651","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="236","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-511-21","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="826","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="956","WetlandType"] <- "Marsh"
+    
+# bog + marsh >> "bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="154","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="20","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="362","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="416","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-469-1","WetlandType"] <- "Bog"
+    
+# fen + marsh >> marsh
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="157","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="1570","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="237","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="247","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="387","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="418","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="467","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="553","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="754","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="829","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="851","WetlandType"] <- "Marsh"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="899","WetlandType"] <- "Marsh"
+    
+# bog + fen >> Fen
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="16","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="295","WetlandType"] <- "Rich Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="298","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="417","WetlandType"] <- "Bog"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="560","WetlandType"] <- "Rich Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="621","WetlandType"] <- "Poor Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="726","WetlandType"] <- "Poor Fen"
+wetlandclassification_wetland[wetlandclassification_wetland$Site=="842","WetlandType"] <- "Poor Fen"
+
+# delete repeated Site classificaitons
+wetlandclassification_wetland <- wetlandclassification_wetland %>% distinct()
+
+# check to make sure each site has only 1 wetland classification
+wetlandclassification_wetland %>% select(Site) %>% unique() %>% nrow() # 863 unique sites
+wetlandclassification_wetland %>% select(Site, WetlandType) %>% unique() %>% nrow() # 863 unique site x wetlandtypes
+wetlandclassification_wetland$Protocol <- "Wetland"
+}
+
+# combine wetland classifications
+wetlandclassification_all <- bind_rows(wetlandclassification, wetlandclassification_wetland)
+
+# add wetland class to plant veg df
+{
+  plant_pa <- left_join(plant_pa, wetlandclassification_all, by=c("Protocol", "Site")) %>% select(Protocol, WetlandType,Site,Year,everything())
+  tmp <- filter(plant_pa, is.na(WetlandType) & Protocol=="Wetland") # wetland sites w/o classification are SOWWs
+  tmp$WetlandType <- "Shallow Lake"
+  plant_pa <- plant_pa %>% filter(!is.na(WetlandType)) # excludes wetland and terrestrial sites without classification
+  # exclude species which only occur 1x
+  plant_pa <- plant_pa %>% group_by(Species) %>% mutate(n=sum(PA)) %>% filter(n>1) %>% select(-n) %>% ungroup()
+  
+  plant_pa2 <- bind_rows(plant_pa,tmp) # adds SOWWs back to dataset
+  plant_pa2 <- plant_pa2 %>% group_by(Species) %>% mutate(n=sum(PA)) %>% filter(n>1) %>% select(-n) %>% ungroup()
+  
+}
+```
+
+We have two plant datasets. `plant_pa` excludes sites classified as SOWWs; `plant_pa2` includes sites classified as SOWWs. For the moment, let's proceed using the df which _includes_ SOWWs. Add Natural Region designation to each site.
+
+```{r echo=F, message=F, warning=F}
+veg_pa <- plant_pa2 
+veg_pa <- veg_pa %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
+  mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
+  mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-"))
+
+setwd("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/")
+nr <- read.csv("Terrestrial_Wetland_Sites_all_NRs.csv")
+# nr %>% distinct(Protocol, ABMI.Site) %>% tail(50) %>% data.frame() # note: must exclude the "W-" in wetland sites
+nr$ABMI.Site <- nr$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
+
+veg_pa$tmpSiteMatch <- paste(str_extract(string=veg_pa$Site, pattern="OG-"), str_extract(string=veg_pa$Site, pattern="\\d+"), sep="") 
+veg_pa$tmpSiteMatch <- veg_pa$tmpSiteMatch %>% str_remove(pattern="NA")
+
+veg_pa <- left_join(veg_pa, select(nr, Protocol, ABMI.Site, NSRNAME, NRNAME), by=c("Protocol", "tmpSiteMatch"="ABMI.Site")) %>% select(-tmpSiteMatch) %>% distinct()
+veg_pa <- veg_pa %>% filter(WetlandType!="Alkali Fen") %>% droplevels()
+veg_pa <- veg_pa %>% filter(!is.na(NRNAME)) %>% droplevels()
+```
+
+Summary of the distribution of sites:
+```{r}
+veg_pa %>% distinct(Protocol,WetlandType,Site, NRNAME) %>% group_by(Protocol) %>% tally()
+veg_pa %>% distinct(Protocol,WetlandType,Site, NRNAME) %>% group_by(WetlandType) %>% tally()
+veg_pa %>% distinct(Protocol,WetlandType,Site, NRNAME) %>% group_by(NRNAME) %>% tally()
+
+```
+
+Exclude taxa which have not been ID'd to species (i.e. those that have been ID'd to genus or to subsepcies). Exclude taxa not ID'd to species.
+
+```{r, echo=F, warning=F, message=F}
+veg_pa$Species <- veg_pa$Species %>% word(start=1, end=2)
+veg_pa$Species <- veg_pa$Species %>% recode("Betula X" = "Betula X sargentii")
+veg_pa <- veg_pa %>% filter(!is.na(Species))
+# veg_pa %>% filter(Species=="Hesperostipa comata ssp. comata")
+```
+
+
+# 2. Load climatic data
+
+Load and examine the available climate data. The histogram below shows the distribution of climatic variables for each focal site. 
+
+* climatic_moisture_defecit (CMD) = precipitation - potential evopotranspiration (PET is evapotrans. w/o any water limitation)
+* FFP = frost-free period (days)
+* MAP = mean annual precipitation (mm)
+* MAT = mean annual temperature (C)
+* summer_precip (SumPrecip) = precipitation (mm) in summer months (June, July, August)
+
+```{r echo=F, warning=F, message=F}
+# env vars
+setwd("/Users/cari/Desktop/Waterloo/Martin")
+clim <- read.csv("ABMI terrestrial + wetland sites climate.csv") %>% 
+  select(-Year, -Latitude, -Longitude)
+
+# remove "W-" from climate sites
+clim$ABMI.Site <- clim$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
+  
+# create ABMI main site matching ID in veg_pa
+veg_pa$tmpSiteMatch <- paste(str_extract(string=veg_pa$Site, pattern="OG-"),
+                             str_extract(string=veg_pa$Site, pattern="\\d+"), sep="") 
+veg_pa$tmpSiteMatch <- veg_pa$tmpSiteMatch %>% str_remove(pattern="NA")
+  
+# sites to keep
+sites <- veg_pa %>% ungroup() %>% select(Protocol, Site, tmpSiteMatch,Year) %>% distinct()
+clim2 <- left_join(sites,clim, by=c("Protocol", "tmpSiteMatch"="ABMI.Site")) %>%
+  select(-tmpSiteMatch)
+
+clim2 %>% gather(key=ClimateVar, value=Value, 4:ncol(clim2)) %>%  
+  ggplot(aes(x=Value, fill=ClimateVar)) +
+  geom_histogram(bins=30) +
+  facet_wrap(~ClimateVar, scales="free") + theme_classic() +theme(legend.position="none")
+```
+
+__There are 25 sites w/o climate data.__ Must exclude them for now.
+
+```{r echo=F, message=F, warning=F}
+# which sites do not have clim data
+tmp <- filter(clim2, is.na(MAT))
+tmp %>% group_by(Protocol) %>% tally() # 25 sites have no climate data
+
+# exclude sites wo climate data
+clim2 <- clim2 %>% filter(!is.na(MAP))
+```
+
+Bin the continuous climatic variables into 10 bins each with a similar number of sites. Assign each site to a bin.
+```{r echo=F}
+  clim2 <- clim2 %>% select(Protocol, Site,Year,"CMD"=climatic_moisture_defecit,FFP,MAP,MAT, "SumPrecip"=summer_precip)
+  clim2$CMDbin <- ntile(clim2$FFP, n=10) 
+  clim2$FFPbin <- ntile(clim2$FFP, n=10) 
+  clim2$MAPbin <- ntile(clim2$MAP, n=10)
+  clim2$MATbin <- ntile(clim2$MAT, n=10)
+  clim2$SumPrecipbin <- ntile(clim2$SumPrecip, n=10)
+```
+
+# 3. Calculate species sensitivity index (SSI)
+We can examine the of occurrences of each species in each climate bin. To do so, we join the vegetation df (`veg_pa`) to the climate df (`clim2`), sum the number of occurrencs in each bin, and plot a histogram. For example, below we can see the occurence frequency distribution of _Typha latifolia_ across a gradient of CMD (Climatic Moisture Defecit).
+```{r echo=F, warning=F}
+# CMD
+left_join(veg_pa, clim2, by=c("Site", "Year")) %>% 
+  group_by(CMDbin,Species) %>% summarize(occ_freq=sum(PA)) %>% 
+  arrange(Species,desc(occ_freq)) %>% 
+  filter(Species=="Typha latifolia") %>% 
+  ggplot(aes(x=CMDbin,y=occ_freq)) + 
+  geom_bar(stat="identity")
+
+```
+
+Now calculate the occurrence frequency distribution for every species, across each climatic gradient. We will exclude species which occur only 1x, since they will have high sensitivity to the gradient.
+
+Also calculate the specicies sensitivity index (SSI), the coeffient of variation (sd/mean) of each species's occurrence frequency distribution across each climatic gradient. This df is called `sp_SSI`. 
+
+```{r echo=F, warning=F, message=F}
+occfreq_CMDbin <- left_join(veg_pa, select(clim2, Protocol, Site,Year,CMDbin), 
+                            by=c("Protocol", "Site", "Year")) %>% 
+    group_by(CMDbin,Species) %>% 
+    summarize(occ_freq_CMD=sum(PA)) %>% 
+    filter(!is.na(CMDbin)) 
+occfreq_FFPbin <- left_join(veg_pa, select(clim2, Protocol, Site,Year,FFPbin), 
+                            by=c("Protocol", "Site", "Year")) %>% 
+    group_by(FFPbin,Species) %>% 
+    summarize(occ_freq_FFP=sum(PA)) %>% 
+    filter(!is.na(FFPbin)) 
+occfreq_MAPbin <- left_join(veg_pa, select(clim2, Protocol, Site,Year, MAPbin), 
+                            by=c("Protocol", "Site", "Year")) %>% 
+    group_by(MAPbin,Species) %>% 
+    summarize(occ_freq_MAP=sum(PA)) %>% 
+    filter(!is.na(MAPbin)) 
+occfreq_MATbin <-left_join(veg_pa, select(clim2, Protocol, Site,Year, MATbin), 
+                           by=c("Protocol", "Site", "Year")) %>% 
+    group_by(MATbin,Species) %>% 
+    summarize(occ_freq_MAT=sum(PA)) %>% 
+    filter(!is.na(MATbin)) 
+occfreq_SumPrecipbin <- left_join(veg_pa, select(clim2, Protocol, Site,Year, SumPrecipbin), 
+                                  by=c("Protocol", "Site", "Year")) %>% 
+    group_by(SumPrecipbin,Species) %>% 
+    summarize(occ_freq_SumPrecip=sum(PA)) %>% 
+    filter(!is.na(SumPrecipbin)) 
+
+occfreq_CMDbin <- occfreq_CMDbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq_CMD)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+occfreq_FFPbin <- occfreq_FFPbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq_FFP)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+occfreq_MAPbin <- occfreq_MAPbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq_MAP)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+occfreq_MATbin <- occfreq_MATbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq_MAT)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+occfreq_SumPrecipbin <- occfreq_SumPrecipbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq_SumPrecip)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+
+  occfreq_CMDbin <- occfreq_CMDbin %>% 
+    spread(key=CMDbin, value=occ_freq_CMD) %>% 
+    gather(key=CMDbin, value=occ_freq_CMD, 2:ncol(.)) %>% 
+    mutate(occ_freq_CMD=replace_na(occ_freq_CMD,0))
+  occfreq_FFPbin <- occfreq_FFPbin %>% 
+    spread(key=FFPbin, value=occ_freq_FFP) %>% 
+    gather(key=FFPbin, value=occ_freq_FFP, 2:ncol(.)) %>% 
+    mutate(occ_freq_FFP=replace_na(occ_freq_FFP,0))
+  occfreq_MAPbin <- occfreq_MAPbin %>% 
+    spread(key=MAPbin, value=occ_freq_MAP) %>% 
+    gather(key=MAPbin, value=occ_freq_MAP, 2:ncol(.)) %>% 
+    mutate(occ_freq_MAP=replace_na(occ_freq_MAP,0))
+  occfreq_MATbin <- occfreq_MATbin %>% 
+    spread(key=MATbin, value=occ_freq_MAT) %>% 
+    gather(key=MATbin, value=occ_freq_MAT, 2:ncol(.)) %>% 
+    mutate(occ_freq_MAT=replace_na(occ_freq_MAT,0))
+  occfreq_SumPrecipbin <- occfreq_SumPrecipbin %>% 
+    spread(key=SumPrecipbin, value=occ_freq_SumPrecip) %>% 
+    gather(key=SumPrecipbin, value=occ_freq_SumPrecip, 2:ncol(.)) %>% 
+    mutate(occ_freq_SumPrecip=replace_na(occ_freq_SumPrecip,0))
+  
+sp_SSI <- occfreq_FFPbin %>% 
+  group_by(Species) %>%
+  summarize(CV_FFP=sd(occ_freq_FFP)/mean(occ_freq_FFP))
+sp_SSI2 <- occfreq_MAPbin %>% 
+  group_by(Species) %>%
+  summarize(CV_MAP=sd(occ_freq_MAP)/mean(occ_freq_MAP))
+sp_SSI3 <- occfreq_MATbin %>% 
+  group_by(Species) %>%
+  summarize(CV_MAT=sd(occ_freq_MAT)/mean(occ_freq_MAT))
+sp_SSI4 <- occfreq_SumPrecipbin %>% 
+  group_by(Species) %>%
+  summarize(CV_SumPrecip=sd(occ_freq_SumPrecip)/mean(occ_freq_SumPrecip))
+sp_SSI5 <- occfreq_CMDbin %>% 
+  group_by(Species) %>%
+  summarize(CV_CMD=sd(occ_freq_CMD)/mean(occ_freq_CMD))
+  
+# combine
+sp_SSI <- left_join(sp_SSI, sp_SSI2)
+sp_SSI <- left_join(sp_SSI, sp_SSI3)
+sp_SSI <- left_join(sp_SSI, sp_SSI4)
+sp_SSI <- left_join(sp_SSI, sp_SSI5)
+```
+
+```{r echo=F}
+head(sp_SSI)
+# sp_SSI %>% 
+#   gather(key=variable, value=CV, 2:6) %>% 
+#   ggplot(aes(x=CV, fill=variable)) + geom_histogram(bins=50, alpha=0.5)
+```
+
+### 3.1 Relationships between species occurrence frequency and CV:
+
+```{r echo=F, message=F}
+  p0 <- left_join(select(sp_SSI, Species, CV_CMD), occfreq_CMDbin) %>% 
+    group_by(Species, CV_CMD) %>% summarize(cum_occ_freq = sum(occ_freq_CMD)) %>% 
+    ggplot(aes(x=CV_CMD, y=cum_occ_freq)) + 
+    geom_point()
+  
+  p1 <- left_join(select(sp_SSI, Species, CV_FFP), occfreq_FFPbin) %>% 
+    group_by(Species, CV_FFP) %>% summarize(cum_occ_freq = sum(occ_freq_FFP)) %>% 
+    ggplot(aes(x=CV_FFP, y=cum_occ_freq)) + 
+    geom_point()
+  
+  p2 <- left_join(select(sp_SSI, Species, CV_MAP), occfreq_MAPbin) %>% 
+    group_by(Species, CV_MAP) %>% summarize(cum_occ_freq = sum(occ_freq_MAP)) %>% 
+    ggplot(aes(x=CV_MAP, y=cum_occ_freq)) + 
+    geom_point()
+  
+  p3 <- left_join(select(sp_SSI, Species, CV_MAT), occfreq_MATbin) %>% 
+    group_by(Species, CV_MAT) %>% summarize(cum_occ_freq = sum(occ_freq_MAT)) %>% 
+    ggplot(aes(x=CV_MAT, y=cum_occ_freq)) + 
+    geom_point()
+  
+  p4 <- left_join(select(sp_SSI, Species, CV_SumPrecip), occfreq_SumPrecipbin) %>% 
+    group_by(Species, CV_SumPrecip) %>% summarize(cum_occ_freq = sum(occ_freq_SumPrecip)) %>% 
+    ggplot(aes(x=CV_SumPrecip, y=cum_occ_freq)) + 
+    geom_point()
+  
+  cowplot::plot_grid(p0, p1,p2,p3,p4, ncol=2, nrow=3)
+```
+
+# 4. Calculate community sensitivity index (CSI)
+
+Add SSI of each species (`sp_SSI`) to the vegetation df (`veg_pa`). Calculate the mean SSI of species at each site. Add the climate df (`clim2`). 
+
+```{r echo=F, message=F, warning=F}
+veg_CSI_climate <- left_join(veg_pa, sp_SSI) 
+veg_CSI_climate <- veg_CSI_climate %>% 
+    group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
+    summarize(CSI_CMD=mean(CV_FFP),
+              CSI_FFP=mean(CV_FFP),
+              CSI_MAP=mean(CV_MAP),
+              CSI_MAT=mean(CV_MAT),
+              CSI_SumPrecip=mean(CV_SumPrecip)) %>% 
+  filter(!is.na(CSI_FFP))
+  
+veg_CSI_climate <- left_join(veg_CSI_climate,clim2) %>% 
+  select(-CMDbin, -FFPbin, -MAPbin, -MATbin, -SumPrecipbin)
+
+```
+
+Compare the distribution of CSI values for wetland vs terrestrial sites.
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate,aes(x=CSI_CMD, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_CMD") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p1 <- ggplot(veg_CSI_climate,aes(x=CSI_FFP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_FFP") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p2 <- ggplot(veg_CSI_climate,aes(x=CSI_MAT, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAT") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p3 <- ggplot(veg_CSI_climate,aes(x=CSI_MAP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAP") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p4 <- ggplot(veg_CSI_climate,aes(x=CSI_SumPrecip, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_SumPrecip") +
+  theme_classic() +
+  theme(legend.position="top")
+
+CSI_hist <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+  p1 + theme(legend.position = "none"), 
+                   p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"),  
+                   p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI_hist <- cowplot::plot_grid(myleg,
+                                    CSI_hist,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI_hist
+```
+
+# 5. Examine patterns of CSI across climate gradients
+### 5.1 Comparisons between Terrestrial and Wetland Protocols
+
+The Wetland protocol systematically underestimates the CSI of communities across all climatic gradients. Generally, though, communities at the extremes of each climate gradient show higher sensitivity to climatic conditions; these communities are composed to species with high fidelity to the environmental conditions.
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate,aes(x=CMD,y=CSI_CMD, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p1 <- ggplot(veg_CSI_climate,aes(x=FFP,y=CSI_FFP, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p2 <-   ggplot(veg_CSI_climate,aes(x=MAT,y=CSI_MAT, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p3 <-   ggplot(veg_CSI_climate,aes(x=MAP,y=CSI_MAP, color=Protocol)) +
+    coord_trans(x="log10",y="log10") +
+  labs(x="log(MAP)", y="log(CSI_MAP)") +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p4 <-   ggplot(veg_CSI_climate,aes(x=SumPrecip,y=CSI_SumPrecip, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+CSI.clim.grads <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                     p1 + theme(legend.position = "none"), 
+                                     p2 + theme(legend.position = "none"), 
+                                     p3 + theme(legend.position = "none"),  
+                                     p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI.clim.grads <- cowplot::plot_grid(myleg,
+                                    CSI.clim.grads,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI.clim.grads
+
+```
+
+### 5.2 Comparisons among wetland classes
+
+Peatland communities are relatively insensitive to climatic conditions whereas marshes, SOWWs, and wet meadows show positive correlation between CSI and climatic gradients. However, peatlands (bogs and fens) occur more often in the boreal and the other wetland types occurr in grasslands, so we are confounding wetland type with Natural Region and latitude.
+
+```{r echo=F, message=F, warning=F}
+  p0 <- ggplot(veg_CSI_climate,aes(x=CMD,y=CSI_CMD, color=WetlandType, shape=WetlandType)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", se=F, size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+  p1 <- ggplot(veg_CSI_climate,aes(x=FFP,y=CSI_FFP, color=WetlandType, shape=WetlandType)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", se=F, size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+  
+  p2 <- ggplot(veg_CSI_climate,aes(x=MAT,y=CSI_MAT, color=WetlandType, shape=WetlandType)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", se=F, size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+  
+  p3 <- ggplot(filter(veg_CSI_climate, Site!="1261" & Site!="876"), # marsh outliers
+         aes(x=MAP,y=CSI_MAP, color=WetlandType, shape=WetlandType)) +
+    # coord_trans(x="log10",y="log10") +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", se=F, size=.75) +
+    # geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() +
+    theme(legend.position = "top")
+  
+  p4 <- ggplot(veg_CSI_climate,aes(x=SumPrecip,y=CSI_SumPrecip, color=WetlandType, shape=WetlandType)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+    # geom_smooth(method="lm", linetype="dashed", se=F) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+CSI.clim.grads_wetlandtype <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                                 p1 + theme(legend.position = "none"), 
+                                                 p2 + theme(legend.position = "none"), 
+                                                 p3 + theme(legend.position = "none"),  
+                                                 p4 + theme(legend.position = "none"), 
+                                                 ncol=2,
+                                                 nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI.clim.grads_wetlandtype <- cowplot::plot_grid(myleg,
+                                    CSI.clim.grads_wetlandtype,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI.clim.grads_wetlandtype
+```
+
+### 5.3 Comparisons among Natural Regions
+
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate,aes(x=CMD,y=CSI_CMD, color=NRNAME, shape=NRNAME)) +
+  geom_point(alpha=0.5, size=.5, pch=20) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+  # geom_smooth(method="lm", linetype="dashed", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p1 <- ggplot(veg_CSI_climate,aes(x=FFP,y=CSI_FFP, color=NRNAME, shape=NRNAME)) +
+  geom_point(alpha=0.5, size=.5, pch=20) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+  # geom_smooth(method="lm", linetype="dashed", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+  
+p2 <- ggplot(veg_CSI_climate,aes(x=MAT,y=CSI_MAT, color=NRNAME, shape=NRNAME)) +
+  geom_point(alpha=0.5, size=.5, pch=20) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+  # geom_smooth(method="lm", linetype="dashed", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+  
+p3 <- ggplot(filter(veg_CSI_climate, Site!="1261"), # marsh outliers
+       aes(x=MAP,y=CSI_MAP, color=NRNAME, shape=NRNAME)) +
+  geom_point(alpha=0.5, size=.5, pch=20) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+  # geom_smooth(method="lm", linetype="dashed", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+  
+p4 <- ggplot(veg_CSI_climate,aes(x=SumPrecip,y=CSI_SumPrecip, color=NRNAME, shape=NRNAME)) +
+  geom_point(alpha=0.5, size=.5, pch=20) + 
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, size=.75) +
+  # geom_smooth(method="lm", linetype="dashed", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+CSI.clim.grads_nr <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                                 p1 + theme(legend.position = "none"), 
+                                                 p2 + theme(legend.position = "none"), 
+                                                 p3 + theme(legend.position = "none"),  
+                                                 p4 + theme(legend.position = "none"), 
+                                                 ncol=2,
+                                                 nrow=3)
+myleg <- cowplot::get_legend(p0)
+CSI.clim.grads_nr <- cowplot::plot_grid(myleg,
+                                    CSI.clim.grads_nr,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI.clim.grads_nr
+cowplot::plot_grid(p0 +  theme(legend.position = "top"), p2 +  theme(legend.position = "none"), ncol=1, nrow=2)
+```
+
+
+# 6. Examine patterns of species richness between protocols and across climate gradients and natural regions
+
+```{r echo=F, message=F, warning=F}
+veg_rich <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site,  Year) %>% summarize(spR=sum(PA))
+veg_rich <- left_join(veg_rich,clim2) %>% select(-FFPbin, -MAPbin, -MATbin, -SumPrecipbin) 
+```
+
+There is a difference in the species richness of site sampled with the Wetland and Terrestrial protocols. There are also differences in the number of sites sampled.
+
+```{r echo=F, message=F, warning=F}
+veg_rich %>% distinct(Protocol,Site,Year) %>% group_by(Protocol) %>% tally()
+```
+
+```{r echo=F, message=F, warning=F}
+ggplot(veg_rich, aes(x=spR, fill=Protocol)) +
+  geom_histogram(alpha=0.5, position="identity") +
+    labs(x="Sp. Richness (N)") +
+  theme_classic() +
+  theme(legend.position = "top")
+```
+
+Sites sampled with the wetland protocol have lower species richness than those sampled with the terrestrial protocol, bu there is considerable overlap. 
+
+```{r warning=F, echo=F, message=F}
+p0 <- ggplot(veg_rich, aes(x=CMD, y=spR, color=Protocol, shape=Protocol)) +
+  geom_point( alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm", se=F) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  guides(shape = guide_legend(override.aes = list(size = 2, alpha=1)))
+
+p1 <- ggplot(veg_rich, aes(x=FFP, y=spR, color=Protocol, shape=Protocol)) +
+  geom_point(pch=20, alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p2 <- ggplot(veg_rich, aes(x=MAP, y=spR, color=Protocol, shape=Protocol)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p3 <- ggplot(veg_rich, aes(x=MAT, y=spR, color=Protocol, shape=Protocol)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p4 <- ggplot(veg_rich, aes(x=SumPrecip, y=spR, color=Protocol, shape=Protocol)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm", se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+richness.climgrad <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                        p1 + theme(legend.position = "none"), 
+                                        p2 + theme(legend.position = "none"), 
+                                        p3 + theme(legend.position = "none"),  
+                                        p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+richness.climgrad <- cowplot::plot_grid(myleg,
+                                    richness.climgrad,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+richness.climgrad
+```
+
+There is considerable overlap in the species richness of different wetland classes, although it is difficult to really tell because the lines are  messy. 
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_rich, aes(x=CMD, y=spR, color=WetlandType)) +
+  geom_point(pch=20, alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p1 <- ggplot(veg_rich, aes(x=FFP, y=spR, color=WetlandType)) +
+  geom_point(pch=20, alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p2 <- ggplot(veg_rich, aes(x=MAP, y=spR, color=WetlandType)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p3 <- ggplot(veg_rich, aes(x=MAT, y=spR, color=WetlandType)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p4 <- ggplot(veg_rich, aes(x=SumPrecip, y=spR, color=WetlandType)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+richness.climgrad_wetlandtype <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                                    p1 + theme(legend.position = "none"),
+                                                    p2 + theme(legend.position = "none"), 
+                                                    p3 + theme(legend.position = "none"),  
+                                                    p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+richness.climgrad_wetlandtype <- cowplot::plot_grid(myleg,
+                                                    richness.climgrad_wetlandtype,
+                                                    ncol=1,
+                                                    rel_heights = c(0.2,2))
+richness.climgrad_wetlandtype
+p0
+```
+
+Natural regions differ a good bit in climatic conditions.
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_rich, aes(x=CMD, y=spR, color=NRNAME)) +
+  geom_point(pch=20, alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p1 <- ggplot(veg_rich, aes(x=FFP, y=spR, color=NRNAME)) +
+  geom_point(pch=20, alpha=0.5, size=0.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p2 <- ggplot(veg_rich, aes(x=MAP, y=spR, color=NRNAME)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p3 <- ggplot(veg_rich, aes(x=MAT, y=spR, color=NRNAME)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+p4 <- ggplot(veg_rich, aes(x=SumPrecip, y=spR, color=NRNAME)) +
+  geom_point(pch=20, alpha=0.5, size=.5) +
+  labs(y="Sp. Richness (N)") +
+  geom_smooth(method="lm",se=F) +
+  theme_classic() +
+  theme(legend.position = "top")
+
+richness.climgrad_nr <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                                    p1 + theme(legend.position = "none"),
+                                                    p2 + theme(legend.position = "none"), 
+                                                    p3 + theme(legend.position = "none"),  
+                                                    p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+richness.climgrad_nr <- cowplot::plot_grid(myleg,
+                                           richness.climgrad_nr,
+                                           ncol=1,
+                                            rel_heights = c(0.2,2))
+richness.climgrad_nr
+```
+
+# 7. Calculate SSI only using terrestrial veg data
+
+To compare the sensitivity of species captured in sites from Terrestrial vs. Wetland protocols, try calculating SSI based only on the distribution of species from sites in one protocol. First calculate SSI based on occurrence freqency of terrestrial sites. Then calculate CSI of terrestrial _and_ wetland sites. Could be interesting to see if the resulting CSI shows wetland sites generally with higher or lower or the same CSI values relative to terrestrial sites.
+
+```{r echo=F, warning=F, message=F}
+
+clim2_t <- clim2 %>% 
+  filter(Protocol=="Terrestrial") %>% 
+  select(Protocol, Site,Year,CMD, FFP,MAP,MAT, SumPrecip)
+clim2_t$CMDbin <- ntile(clim2_t$CMD, n=10) 
+clim2_t$FFPbin <- ntile(clim2_t$FFP, n=10) 
+clim2_t$MAPbin <- ntile(clim2_t$MAP, n=10)
+clim2_t$MATbin <- ntile(clim2_t$MAT, n=10)
+clim2_t$SumPrecipbin <- ntile(clim2_t$SumPrecip, n=10)
+
+
+occfreq_CMDbin_t <- left_join(filter(veg_pa, Protocol=="Terrestrial"),
+                              select(clim2_t, Protocol, Site,Year,CMDbin),
+                              by=c("Protocol", "Site", "Year")) %>%
+  group_by(CMDbin,Species) %>% 
+  summarize(occ_freq_CMD=sum(PA)) %>% 
+  filter(!is.na(CMDbin)) 
+
+occfreq_FFPbin_t <- left_join(filter(veg_pa, Protocol=="Terrestrial"),
+                              select(clim2_t, Protocol, Site,Year,FFPbin),
+                              by=c("Protocol", "Site", "Year")) %>%
+  group_by(FFPbin,Species) %>% 
+  summarize(occ_freq_FFP=sum(PA)) %>% 
+  filter(!is.na(FFPbin)) 
+
+occfreq_MAPbin_t <- left_join(filter(veg_pa, Protocol=="Terrestrial"),
+                              select(clim2_t, Protocol, Site,Year, MAPbin),
+                              by=c("Protocol", "Site", "Year")) %>% 
+  group_by(MAPbin,Species) %>% 
+  summarize(occ_freq_MAP=sum(PA)) %>% 
+  filter(!is.na(MAPbin)) 
+occfreq_MATbin_t <-left_join(filter(veg_pa, Protocol=="Terrestrial"),
+                             select(clim2_t, Protocol, Site,Year, MATbin),
+                             by=c("Protocol", "Site", "Year")) %>%
+  group_by(MATbin,Species) %>% 
+  summarize(occ_freq_MAT=sum(PA)) %>% 
+  filter(!is.na(MATbin)) 
+occfreq_SumPrecipbin_t <- left_join(filter(veg_pa, Protocol=="Terrestrial"),
+                                    select(clim2_t, Protocol, Site,Year, SumPrecipbin), 
+                                    by=c("Protocol", "Site", "Year")) %>% 
+  group_by(SumPrecipbin,Species) %>%
+  summarize(occ_freq_SumPrecip=sum(PA)) %>% 
+  filter(!is.na(SumPrecipbin)) 
+
+occfreq_CMDbin_t <- occfreq_CMDbin_t %>% 
+  spread(key=CMDbin, value=occ_freq_CMD) %>% 
+  gather(key=CMDbin, value=occ_freq_CMD, 2:ncol(.)) %>% 
+  mutate(occ_freq_CMD=replace_na(occ_freq_CMD,0))
+occfreq_FFPbin_t <- occfreq_FFPbin_t %>% 
+  spread(key=FFPbin, value=occ_freq_FFP) %>% 
+  gather(key=FFPbin, value=occ_freq_FFP, 2:ncol(.)) %>% 
+  mutate(occ_freq_FFP=replace_na(occ_freq_FFP,0))
+occfreq_MAPbin_t <- occfreq_MAPbin_t %>% 
+  spread(key=MAPbin, value=occ_freq_MAP) %>% 
+  gather(key=MAPbin, value=occ_freq_MAP, 2:ncol(.)) %>% 
+  mutate(occ_freq_MAP=replace_na(occ_freq_MAP,0))
+occfreq_MATbin_t <- occfreq_MATbin_t %>% 
+  spread(key=MATbin, value=occ_freq_MAT) %>% 
+  gather(key=MATbin, value=occ_freq_MAT, 2:ncol(.)) %>% 
+  mutate(occ_freq_MAT=replace_na(occ_freq_MAT,0))
+occfreq_SumPrecipbin_t <- occfreq_SumPrecipbin_t %>% 
+  spread(key=SumPrecipbin, value=occ_freq_SumPrecip) %>% 
+  gather(key=SumPrecipbin, value=occ_freq_SumPrecip, 2:ncol(.)) %>% 
+  mutate(occ_freq_SumPrecip=replace_na(occ_freq_SumPrecip,0))
+
+sp_SSI_t <- occfreq_CMDbin_t %>% 
+  group_by(Species) %>%
+  summarize(CV_CMD=sd(occ_freq_CMD)/mean(occ_freq_CMD))
+sp_SSI1_t <- occfreq_FFPbin_t %>% 
+  group_by(Species) %>%
+  summarize(CV_FFP=sd(occ_freq_FFP)/mean(occ_freq_FFP))
+sp_SSI2_t <- occfreq_MAPbin_t %>% 
+  group_by(Species) %>%
+  summarize(CV_MAP=sd(occ_freq_MAP)/mean(occ_freq_MAP))
+sp_SSI3_t <- occfreq_MATbin_t %>% 
+  group_by(Species) %>%
+  summarize(CV_MAT=sd(occ_freq_MAT)/mean(occ_freq_MAT))
+sp_SSI4_t <- occfreq_SumPrecipbin_t %>% 
+  group_by(Species) %>%
+  summarize(CV_SumPrecip=sd(occ_freq_SumPrecip)/mean(occ_freq_SumPrecip))
+
+sp_SSI_t <- left_join(sp_SSI_t, sp_SSI1_t)
+sp_SSI_t <- left_join(sp_SSI_t, sp_SSI2_t)
+sp_SSI_t <- left_join(sp_SSI_t, sp_SSI3_t)
+sp_SSI_t <- left_join(sp_SSI_t, sp_SSI4_t)
+```
+
+```{r echo=F}
+head(sp_SSI_t)
+# sp_SSI_t %>% 
+#  gather(key=variable, value=CV, 2:5) %>% 
+#  ggplot(aes(x=CV, fill=variable)) + geom_histogram(bins=50, alpha=0.5)
+```
+
+```{r echo=F, message=F, warning=F}
+veg_CSI_climate_t <- left_join(veg_pa, sp_SSI_t)   
+veg_CSI_climate_t <- veg_CSI_climate_t %>% 
+    group_by(Protocol,NRNAME,WetlandType,Site,Year) %>% 
+    summarize(CSI_CMD=mean(CV_CMD),
+              CSI_FFP=mean(CV_FFP),
+              CSI_MAP=mean(CV_MAP),
+              CSI_MAT=mean(CV_MAT),
+              CSI_SumPrecip=mean(CV_SumPrecip)) %>% 
+  filter(!is.na(CSI_FFP))
+ 
+veg_CSI_climate_t <- left_join(veg_CSI_climate_t,clim2) %>% 
+  select(-CMDbin, -FFPbin, -MAPbin, -MATbin, -SumPrecipbin)
+
+```
+
+
+### 7.1 Compare the distribution of CSI_t between protocols and among wetland classes and natural regions
+
+There are some slight differeences in the distribution of CSI values between wetland and terrestrial sites when CSI is calculated based on occurrence frequency of terrestrial sites only, but wetland sites don't have systematically higher or lower CSI than terrestrial sites across diff gradients. 
+
+```{r echo=F, message=F, warning=F}
+p1 <- ggplot(veg_CSI_climate_t,aes(x=CSI_FFP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_FFP (terrestrial protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p0 <- ggplot(veg_CSI_climate_t,aes(x=CSI_CMD, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_CMD (terrestrial protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p2 <- ggplot(veg_CSI_climate_t,aes(x=CSI_MAT, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAT (terrestrial protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p3 <- ggplot(veg_CSI_climate_t,aes(x=CSI_MAP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAP (terrestrial protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p4 <- ggplot(veg_CSI_climate_t,aes(x=CSI_SumPrecip, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_SumPrecip (terrestrial protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+CSI_t_hist <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                 p1 + theme(legend.position = "none"), 
+                   p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"),  
+                   p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI_t_hist <- cowplot::plot_grid(myleg,
+                                    CSI_t_hist,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI_t_hist
+```
+
+### 7.2 Examine patterns of CSI_t across climate gradients
+Using only species from terrestrial sites to create SSI results in pretty similar patterns of CSIs of Wetland and Terrestrial sites across climatic gradients. Compare this graph to the one created from SSI of both wetland and terrestrial sites (in section 4.2). 
+
+There are some qualitative differences between using the Terrestrial or Wetland protocol sites to calculate SSI. Using terrestrial and wetland sites to calculate SSI, the CSI of sites sampled with the wetland protocol pretty consistently always have lower CSI than terrestrial sites (i.e. wetland sites are less sensitivie than terrestrial sites). When SSI is calculated using only terrestrial sites, however, sites sampled with the wetland protocol show higher sensitivity under moderate climatic condition whereas terrestrial sites show a strong reduction in sensitivity under moderate climatic conditions. That is, wetland sites show relatively more consistent CSI then terrestrial sites.
+
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate_t,aes(x=CMD,y=CSI_CMD, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+p1 <- ggplot(veg_CSI_climate_t,aes(x=FFP,y=CSI_FFP, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+p2 <-   ggplot(veg_CSI_climate_t, aes(x=MAT,y=CSI_MAT, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p3 <-   ggplot(veg_CSI_climate_t,aes(x=MAP,y=CSI_MAP, color=Protocol)) +
+    coord_trans(x="log10",y="log10") +
+  labs(x="log(MAP)", y="log(CSI_MAP)") +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p4 <-   ggplot(veg_CSI_climate_t,aes(x=SumPrecip,y=CSI_SumPrecip, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+CSI.clim.grads_t <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                       p1 + theme(legend.position = "none"), 
+                   p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"),  
+                   p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI.clim.grads_t <- cowplot::plot_grid(myleg,
+                                    CSI.clim.grads_t,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI.clim.grads_t
+
+```
+
+
+
+# 8. Calculate SSI only using wetland veg data
+
+Now calculate SSI based on occurrence freqency of wetland sites. 
+
+```{r echo=F, warning=F, message=F}
+clim2_w <- clim2 %>% filter(Protocol=="Wetland") %>% 
+  select(Protocol, Site,Year,CMD,FFP,MAP,MAT, SumPrecip)
+clim2_w$CMDbin <- ntile(clim2_w$FFP, n=10) 
+clim2_w$FFPbin <- ntile(clim2_w$FFP, n=10) 
+clim2_w$MAPbin <- ntile(clim2_w$MAP, n=10)
+clim2_w$MATbin <- ntile(clim2_w$MAT, n=10)
+clim2_w$SumPrecipbin <- ntile(clim2_w$SumPrecip, n=10)
+
+occfreq_CMDbin_w <- left_join(filter(veg_pa, Protocol=="Wetland"),
+                              select(clim2_w, Protocol, Site,Year,CMDbin),
+                              by=c("Protocol", "Site", "Year")) %>%
+  group_by(CMDbin,Species) %>% 
+  summarize(occ_freq_CMD=sum(PA)) %>% 
+  filter(!is.na(CMDbin)) 
+occfreq_FFPbin_w <- left_join(filter(veg_pa, Protocol=="Wetland"),
+                              select(clim2_w, Protocol, Site,Year,FFPbin),
+                              by=c("Protocol", "Site", "Year")) %>%
+  group_by(FFPbin,Species) %>% 
+  summarize(occ_freq_FFP=sum(PA)) %>% 
+  filter(!is.na(FFPbin)) 
+occfreq_MAPbin_w <- left_join(filter(veg_pa, Protocol=="Wetland"),
+                              select(clim2_w, Protocol, Site,Year, MAPbin),
+                              by=c("Protocol", "Site", "Year")) %>% 
+  group_by(MAPbin,Species) %>% 
+  summarize(occ_freq_MAP=sum(PA)) %>% 
+  filter(!is.na(MAPbin)) 
+occfreq_MATbin_w <-left_join(filter(veg_pa, Protocol=="Wetland"),
+                             select(clim2_w, Protocol, Site,Year, MATbin),
+                             by=c("Protocol", "Site", "Year")) %>%
+  group_by(MATbin,Species) %>% 
+  summarize(occ_freq_MAT=sum(PA)) %>% 
+  filter(!is.na(MATbin)) 
+occfreq_SumPrecipbin_w <- left_join(filter(veg_pa, Protocol=="Wetland"),
+                                    select(clim2_w, Protocol, Site,Year, SumPrecipbin), 
+                                    by=c("Protocol", "Site", "Year")) %>% 
+  group_by(SumPrecipbin,Species) %>%
+  summarize(occ_freq_SumPrecip=sum(PA)) %>% 
+  filter(!is.na(SumPrecipbin)) 
+
+occfreq_CMDbin_w <- occfreq_CMDbin_w %>% 
+  spread(key=CMDbin, value=occ_freq_CMD) %>% 
+  gather(key=CMDbin, value=occ_freq_CMD, 2:ncol(.)) %>% 
+  mutate(occ_freq_CMD=replace_na(occ_freq_CMD,0))
+occfreq_FFPbin_w <- occfreq_FFPbin_w %>% 
+  spread(key=FFPbin, value=occ_freq_FFP) %>% 
+  gather(key=FFPbin, value=occ_freq_FFP, 2:ncol(.)) %>% 
+  mutate(occ_freq_FFP=replace_na(occ_freq_FFP,0))
+occfreq_MAPbin_w <- occfreq_MAPbin_w %>% 
+  spread(key=MAPbin, value=occ_freq_MAP) %>% 
+  gather(key=MAPbin, value=occ_freq_MAP, 2:ncol(.)) %>% 
+  mutate(occ_freq_MAP=replace_na(occ_freq_MAP,0))
+occfreq_MATbin_w <- occfreq_MATbin_w %>% 
+  spread(key=MATbin, value=occ_freq_MAT) %>% 
+  gather(key=MATbin, value=occ_freq_MAT, 2:ncol(.)) %>% 
+  mutate(occ_freq_MAT=replace_na(occ_freq_MAT,0))
+occfreq_SumPrecipbin_w <- occfreq_SumPrecipbin_w %>% 
+  spread(key=SumPrecipbin, value=occ_freq_SumPrecip) %>% 
+  gather(key=SumPrecipbin, value=occ_freq_SumPrecip, 2:ncol(.)) %>% 
+  mutate(occ_freq_SumPrecip=replace_na(occ_freq_SumPrecip,0))
+
+sp_SSI_w <- occfreq_CMDbin_w %>% 
+  group_by(Species) %>%
+  summarize(CV_CMD=sd(occ_freq_CMD)/mean(occ_freq_CMD))
+sp_SSI1_w <- occfreq_FFPbin_w %>% 
+  group_by(Species) %>%
+  summarize(CV_FFP=sd(occ_freq_FFP)/mean(occ_freq_FFP))
+sp_SSI2_w <- occfreq_MAPbin_w %>% 
+  group_by(Species) %>%
+  summarize(CV_MAP=sd(occ_freq_MAP)/mean(occ_freq_MAP))
+sp_SSI3_w <- occfreq_MATbin_w %>% 
+  group_by(Species) %>%
+  summarize(CV_MAT=sd(occ_freq_MAT)/mean(occ_freq_MAT))
+sp_SSI4_w <- occfreq_SumPrecipbin_w %>% 
+  group_by(Species) %>%
+  summarize(CV_SumPrecip=sd(occ_freq_SumPrecip)/mean(occ_freq_SumPrecip))
+
+sp_SSI_w <- left_join(sp_SSI_w, sp_SSI1_w)
+sp_SSI_w <- left_join(sp_SSI_w, sp_SSI2_w)
+sp_SSI_w <- left_join(sp_SSI_w, sp_SSI3_w)
+sp_SSI_w <- left_join(sp_SSI_w, sp_SSI4_w)
+```
+
+```{r echo=F}
+head(sp_SSI_w)
+# sp_SSI_w %>% 
+#  gather(key=variable, value=CV, 2:5) %>% 
+#  ggplot(aes(x=CV, fill=variable)) + geom_histogram(bins=50, alpha=0.5)
+```
+
+```{r echo=F, message=F, warning=F}
+veg_CSI_climate_w <- left_join(veg_pa, sp_SSI_w)   
+veg_CSI_climate_w <- veg_CSI_climate_w %>% 
+    group_by(Protocol,WetlandType,Site,Year) %>% 
+    summarize(CSI_CMD=mean(CV_CMD),
+              CSI_FFP=mean(CV_FFP),
+              CSI_MAP=mean(CV_MAP),
+              CSI_MAT=mean(CV_MAT),
+              CSI_SumPrecip=mean(CV_SumPrecip)) %>% 
+  filter(!is.na(CSI_FFP))
+ 
+veg_CSI_climate_w <- left_join(veg_CSI_climate_w,clim2) %>% 
+  select(-CMDbin, -FFPbin, -MAPbin, -MATbin, -SumPrecipbin)
+
+```
+
+### 8.1 Compare the distribution of CSI_w between protocols and among wetland classes
+
+The distributions of CSI values don't really differ between terrestrial and wetland sites when SSI is calculated with wetland data only. However we can see that there are much fewer terrestrial sites for which we can assign CSI values, probably b/c there are many species in the wetland dataset which are not found in the terrestrial dataset.
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate_w,aes(x=CSI_CMD, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_CMD (wetland protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p1 <- ggplot(veg_CSI_climate_w,aes(x=CSI_FFP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_FFP (wetland protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p2 <- ggplot(veg_CSI_climate_w,aes(x=CSI_MAT, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAT (wetland protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p3 <- ggplot(veg_CSI_climate_w,aes(x=CSI_MAP, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_MAP (wetland protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+p4 <- ggplot(veg_CSI_climate_w,aes(x=CSI_SumPrecip, fill=Protocol)) +
+  geom_histogram(alpha=0.5, bins=30, position="identity") +
+  labs(x="CSI_SumPrecip (wetland protocol only)") +
+  theme_classic() +
+  theme(legend.position="top")
+
+CSI_w_hist <- cowplot::plot_grid(p0 + theme(legend.position = "none"), 
+                                 p1 + theme(legend.position = "none"), 
+                   p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"),  
+                   p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI_w_hist <- cowplot::plot_grid(myleg,
+                                    CSI_w_hist,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI_w_hist
+```
+
+### 8.2 Examine patterns of CSI_w across climate gradients
+
+```{r echo=F, message=F, warning=F}
+p0 <- ggplot(veg_CSI_climate_w,aes(x=CMD,y=CSI_CMD, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+p1 <- ggplot(veg_CSI_climate_w,aes(x=FFP,y=CSI_FFP, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+p2 <-   ggplot(veg_CSI_climate_w, aes(x=MAT,y=CSI_MAT, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p3 <-   ggplot(veg_CSI_climate_w,aes(x=MAP,y=CSI_MAP, color=Protocol)) +
+    coord_trans(x="log10",y="log10") +
+  labs(x="log(MAP)", y="log(CSI_MAP)") +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+p4 <-   ggplot(veg_CSI_climate_w,aes(x=SumPrecip,y=CSI_SumPrecip, color=Protocol)) +
+    geom_point(alpha=0.5, size=.5, pch=20) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), size=.75) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+CSI.clim.grads_w <- cowplot::plot_grid(p0 + theme(legend.position = "none"),
+                                       p1 + theme(legend.position = "none"),
+                   p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"),  
+                   p4 + theme(legend.position = "none"), ncol=2, nrow=3)
+myleg <- cowplot::get_legend(p1)
+CSI.clim.grads_w <- cowplot::plot_grid(myleg,
+                                    CSI.clim.grads_w,
+                                    ncol=1,
+                                    rel_heights = c(0.2,2))
+CSI.clim.grads_w
+
+```
+
+# 9 Correlations among SSI calculated with full and partial datasets
+
+Using only sites from the Terrestrial or Wetland protocols to calculate SSI (below, based on MAT) underestimates the SSI. This underestimation is more severe for the more sensitive species (i.e. at higher SSI values). Nonetheless, there is a strong positive correlation between SSI calculated with both protocols and with each seperate protocol.
+
+```{r echo=F, message=F, warning=F}
+sp_SSI_compare <- sp_SSI_t
+colnames(sp_SSI_compare) <- c("Species", "CV_CMD_t", "CV_FFP_t", "CV_MAP_t", "CV_MAT_t", "CV_SumPrecip_t")
+
+sp_SSI_compare <- left_join(sp_SSI, sp_SSI_compare)
+
+tmp <- sp_SSI_w
+colnames(tmp) <- c("Species", "CV_CMD_w", "CV_FFP_w", "CV_MAP_w", "CV_MAT_w", "CV_SumPrecip_w")
+
+sp_SSI_compare <- left_join(sp_SSI_compare, tmp)
+
+# coef(lm(CV_MAT ~ CV_MAT_t, data=sp_SSI_compare))
+# coef(lm(CV_MAT ~ CV_MAT_w, data=sp_SSI_compare))
+
+p1 <- ggplot(sp_SSI_compare, aes(x=CV_MAT_t, y=CV_MAT)) +
+  geom_point() +
+  labs(x="SSI w/ Terrestrial protocol", y="SSI w/ both protocols") +
+  geom_abline(intercept=0, slope=1) +
+  geom_smooth(method=lm, formula=y~x-1, color="red", fill="red", linetype="dashed") +
+  annotate("text", x=.6,y=3, label="1:1 Line") +
+  annotate("text", x=.6,y=2.9, color="red",label=paste("Slope=",round(coef(lm(CV_MAT ~ CV_MAT_t, data=sp_SSI_compare))[2],2), sep="")) +
+  theme_classic()
+
+p2 <- ggplot(sp_SSI_compare, aes(x=CV_MAT_w, y=CV_MAT)) +
+  geom_point() +
+  geom_abline(intercept=0, slope=1) +
+  labs(x="SSI w/ Wetland protocol", y="SSI w/ both protocols") +
+  geom_smooth(method=lm, formula=y~x-1, color="red", fill="red", linetype="dashed") +
+  annotate("text", x=.6,y=3, label="1:1") +
+  annotate("text", x=.6,y=2.9, color="red", label=paste("Slope=",round(coef(lm(CV_MAT ~ CV_MAT_w, data=sp_SSI_compare))[2],2), sep="")) +
+  theme_classic()
+
+cowplot::plot_grid(p1, p2, ncol=2, nrow=1)
+
+# ggplot(sp_SSI_compare, aes(x=CV_MAT_w, y=CV_MAT_t)) +
+#   geom_point() +
+#   geom_abline(intercept=0, slope=1) +
+#   geom_smooth(method=lm, formula=y~x-1, color="red", fill="red", linetype="dashed") +
+#   annotate("text", x=.6,y=3, label="1:1") +
+#   annotate("text", x=.6,y=2.9, color="red", label=paste("Slope=",round(coef(lm(CV_MAT_t ~ CV_MAT_w, data=sp_SSI_compare))[2],2), sep="")) +
+#   theme_classic()
+```
+
+# 10 Correlations between Terrestrial and Wetland SSI for shared species
+We can also look how SSI is calculated only for species that are shared between protocols. 
+
+```{r echo=F, message=F, warning=F}
+  vegt <- filter(veg_pa, Protocol=="Terrestrial") %>% select(Species) %>% distinct()
+  vegw <- filter(veg_pa, Protocol=="Wetland") %>% select(Species) %>% distinct()
+  
+  sptokeep <- inner_join(vegt, vegw, by=c("Species"))
+
+  # coef(lm(CV_MAT ~ CV_MAT_w, data=filter(sp_SSI_compare, Species %in% sptokeep$Species)))
+
+  sp_SSI_compare %>% filter(Species %in% sptokeep$Species) %>% 
+    ggplot(aes(x=CV_MAT_t, y=CV_MAT_w)) +
+    ggtitle("Shared Species") +
+    geom_jitter() +
+    geom_abline(intercept=0, slope=1) +
+    labs(x="SSI w/ Terrestrial protocol", y="SSI w/ Wetland protocol") +
+    geom_smooth(method=lm, formula=y~x-1, color="red", fill="red", linetype="dashed") +
+    annotate("text", x=.6,y=3, label="1:1 Line") +
+    annotate("text", x=.6,y=2.9, color="red",
+             label=paste("Slope=",
+                         round(coef(lm(CV_MAT ~ CV_MAT_w, 
+                                       data=filter(sp_SSI_compare, Species %in% sptokeep$Species)))[2],2), sep="")) +
+    theme_classic()
+  
+```
+
+Again we see a strong positive correlation (`slope = 0.54`) but there are some species with high sensitivity in only one protocol. Let's examine the species which show high SSI under the Terrestrial protocol, but low or variable SSI under the wetland protocol (i.e. the line of points > 3 on the x-axis). Some of these discrepancies could be ameliorated by using only taxa identified to species (i.e. by excluding taxa IDd to genera or subspecies).
+
+### Species with high SSI in terrestrial sites
+
+```{r echo=F}
+sp_SSI_compare %>% 
+  filter(Species %in% sptokeep$Species) %>% 
+  filter(CV_MAT_t > 3 | CV_MAT_w > 3) %>% 
+  select(Species, CV_MAT_t, CV_MAT_w) %>% 
+  arrange(desc(CV_MAT_t)) %>% head(15)
+```
+
+### Species with high SSI in wetland sites
+
+```{r echo=F}
+sp_SSI_compare %>% 
+  filter(Species %in% sptokeep$Species) %>% 
+  filter(CV_MAT_t > 3 | CV_MAT_w > 3) %>% 
+  select(Species, CV_MAT_t, CV_MAT_w) %>% 
+  arrange(desc(CV_MAT_w)) %>% head(15)
+```
+
+
+# Choosing the most predictive variables
+How can we chose the most appropriate variablesl to describe community sensitivty? Use regression trees and/or random forest. To predict the community sensitivity index (CSI), use the following predictors
+
+* Protocol (terrestrial vs wetland)
+* Natural region
+* Wetland class
+* Site-level species richness
+* Climate variables
+
+Regression tree predicting CSI - MAT
+```{r echo=F, message=F, warning=F}
+library(rpart); library(rpart.plot)
+# add species richness data
+predvars <- left_join(veg_CSI_climate, select(veg_rich, Protocol, WetlandType, Site, Year, spR))
+predvars <- predvars %>% 
+  select(Protocol, NRNAME, WetlandType, Site, Year, spR, everything()) %>% 
+  distinct()
+
+# convert factors to factor (from character)
+predvars$Protocol <- as.factor(predvars$Protocol)
+predvars$NRNAME <- as.factor(predvars$NRNAME)
+predvars$WetlandType <- as.factor(predvars$WetlandType)
+
+# grow tree
+# grow tree
+predvar_fit <- rpart(CSI_MAT ~ Protocol + NRNAME + WetlandType + spR + MAT + MAP + FFP + SumPrecip + CMD, 
+                     data=predvars, method="anova")
+
+# pick tree that minimizes miss-classification rate (prediction error); 
+# we want cp values that minimizes xerror
+bestcp <- predvar_fit$cptable[which.min(predvar_fit$cptable[,"xerror"]),"CP"]
+# prune tree usinging bestcp
+predvar_fit.pruned <- prune(predvar_fit, cp = bestcp)
+
+# plot tree 
+prp(predvar_fit.pruned, faclen = 0, cex = 0.8, extra = 1)
+```
+
+Now grow a random forest to compare the importance of each predictor.
+```{r echo=F, message=F, warning=F}
+# random forest
+library(randomForest)
+fit <- randomForest(CSI_MAT ~ Protocol + NRNAME + WetlandType + spR + MAT + MAP + FFP + SumPrecip + CMD, 
+                    data=predvars,
+                    ntree=1000, replace=T)
+importance(fit) # importance of each predictor
+mean(fit$rsq)
+```
+The final tree's pseudo-R^2^ = `r round(mean(fit$rsq), 2)`.
+
+
+
+
+# TO DO
+
+
+1. ~~Extend to whole AB province~~
+2. use HF gradients 
+3. ~~get new climate data~~
+4. ~~Choose variables to focus on~~
+
+
