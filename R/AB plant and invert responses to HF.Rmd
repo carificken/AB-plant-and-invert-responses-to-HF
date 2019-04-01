@@ -4,7 +4,6 @@ author: "Cari D. Ficken"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 The goal of this project is to compare and contrast the responses of plants and invertebrates to environmental gradients. It uses the following data:
@@ -34,12 +33,10 @@ The human footprint df (`hf`) provides area estimates (km^2) of different specif
 ```{r echo=F, warning=F, message=F}
 # load veg data
 library(tidyverse); library(cowplot)
-setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/")
-veg_pa <- read.csv("ABMI veg cleaned.csv")
+veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
 
 # load HF data 
-setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/")
-hf <- read.csv("Alb wetlands HF.csv") %>% select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
+hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
 
 # keep only data in each df for which we have BOTH data types
 keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
@@ -274,8 +271,7 @@ Now we can examine whether CSI to disturbance is mediated by mean climatic condi
   # load ABMI climate data
   # clim vars - extracted from ABMI data; locations inaccurate
   {
-    setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/climate/")
-    clim <- read.csv("ABMI terrestrial + wetland sites climate.csv") %>% select(-Year, -Latitude, -Longitude)
+    clim <- read.csv(file = "/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/climate/ABMI terrestrial + wetland sites climate.csv") %>% select(-Year, -Latitude, -Longitude)
     
     # remove "W-" from climate sites
     clim$ABMI.Site <- clim$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
@@ -396,7 +392,7 @@ library(randomForest)
                       ntree=1000, replace=T)
 
 importance(fit) # importance of each predictor
-# mean(fit$rsq)
+mean(fit$rsq)
 ```
 The final tree's pseudo-R^2^ = `r round(mean(fit$rsq), 2)`.
 
