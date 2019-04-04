@@ -331,7 +331,7 @@ library(tidyverse)
   
   #  load natural region site designation and add to veg_pa
   {
-    nr <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/Terrestrial_Wetland_Sites_all_NRs.csv")
+    nr <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv")
     nr %>% distinct(Protocol, ABMI.Site) %>% tail(50) %>% data.frame() # note: must exclude the "W-" in wetland sites
     nr$ABMI.Site <- nr$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
     
@@ -367,7 +367,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
 
 # HF data from ABMI excluding boreal
 {
-  terhf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal ABMI_250HFData/Terrestrial250HFData.csv") %>% 
+  terhf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal HF 250 m buffer/Terrestrial250HFData.csv") %>% 
     select("Site"="ABMI_Assigned_Site_ID", "Year"="Survey_Year", "FEATURE_TY", "Area_m2"="Shape_Area")
   terhf <- terhf %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
@@ -377,7 +377,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   terhf <- terhf %>% select(-Area_m2)
   head(terhf)
   
-  wethf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal ABMI_250HFData/Wetland250HFData.csv") 
+  wethf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal HF 250 m buffer/Wetland250HFData.csv") 
   wethf <- wethf %>% gather(key="FEATURE_TY", value="Area_percent", 7:ncol(wethf))
   wethf$Area_km2 <- wethf$Area_percent*(pi*0.25^2)
   wethf <- wethf  %>% select("Site"="ABMI_Site", "Year", "FEATURE_TY", "Area_km2")
@@ -402,7 +402,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   # Terrestrial Sites
   {
     # first load HF datasets
-    ter_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal vHFBuffer250m/All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv")
+    ter_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal HF 250 m buffer/Terrestrial - All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv.csv")
     
     # average HF for sites with replicate measures (i.e. HF measured on different transects?)
     # extract proper site names
@@ -532,7 +532,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   # Wetland Sites
   {
     # first load HF datasets
-    wet_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal vHFBuffer250m/Wetland-ABMI-all-sites-HF-250mBuffer-BorealNR.csv")
+    wet_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal HF 250 m buffer/Wetland-ABMI-all-sites-HF-250mBuffer-BorealNR.csv")
     
     # average HF for sites with replicate measures (i.e. HF measured on different transects?)
     # extract proper site names
@@ -652,8 +652,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   # keep only boreal sites
     # load boreal sites
     {
-      setwd("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/")
-      boreal_sites <- read.csv("Terrestrial_Wetland_Sites_all_NRs.csv") %>% filter(NRNAME=="Boreal") %>% select(Protocol, Site=ABMI.Site) %>% distinct()
+      boreal_sites <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv") %>% filter(NRNAME=="Boreal") %>% select(Protocol, Site=ABMI.Site) %>% distinct()
       head(boreal_sites)
       boreal_sites <- boreal_sites %>% 
         mutate(Site=str_replace(string=Site, pattern="OGW-", replacement = "OG-")) %>% 
@@ -679,8 +678,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
 {
 hf_alb <- bind_rows(hf_nonboreal, boreal_wetland_hf)
 
-setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/") 
-hf_groupingvars <- read.csv("HF grouping vars.csv")
+hf_groupingvars <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/HF grouping vars.csv")
 hf_groupingvars$FEATURE_TY <- tolower(hf_groupingvars$FEATURE_TY)
 hf_alb <- left_join(hf_alb, hf_groupingvars, by="FEATURE_TY")
 
@@ -694,8 +692,7 @@ hf_alb %>% distinct() %>% dim()
 {
   # load and clean wetland classification - terrestrial sites
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
-    siteclass <- read.csv("A_T01C_Site_Capability.csv")
+    siteclass <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data/A_T01C_Site_Capability.csv")
     # remove missing classificaiton values, and only retain the dominant site classification
     levels(siteclass$Percent.Area.of.Ecological.Site.Classification)
     siteclass <- siteclass %>% filter(Percent.Area.of.Ecological.Site.Classification!="VNA" & 
@@ -799,8 +796,7 @@ hf_alb %>% distinct() %>% dim()
   
   # load and clean wetland classification - wetland sites
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data")
-    siteclass_wet <- read.csv("A_W02B_Site_Capability.csv")
+    siteclass_wet <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data/A_W02B_Site_Capability.csv")
     # remove missing classificaiton values, and only retain the dominant site classification
     levels(siteclass_wet$Ecosite...Nutrient.Moisture.Code)
     siteclass_wet <- siteclass_wet %>% filter(Ecosite...Nutrient.Moisture.Code!="DNC" & 
@@ -943,8 +939,7 @@ hf_alb %>% distinct() %>% dim()
 
 # add NR names to df
 {
-  setwd("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/")
-  nr <- read.csv("Terrestrial_Wetland_Sites_all_NRs.csv")
+  nr <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv")
   nr %>% distinct(Protocol, ABMI.Site) %>% tail(50) %>% data.frame() # note: must exclude the "W-" in wetland sites
   nr$ABMI.Site <- nr$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
   
