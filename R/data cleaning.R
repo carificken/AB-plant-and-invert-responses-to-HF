@@ -8,8 +8,7 @@ library(tidyverse)
 {
   # vascular plants - terrestrial sites
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
-    vascplant_pa <- read.csv("A_T15_Vascular_Plants.csv", row.names = NULL)
+    vascplant_pa <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data/A_T15_Vascular_Plants.csv", row.names = NULL)
     names(vascplant_pa) <- colnames(vascplant_pa[,2:ncol(vascplant_pa)])
     vascplant_pa <- vascplant_pa[2:ncol(vascplant_pa)-1]
     names(vascplant_pa)
@@ -32,8 +31,7 @@ library(tidyverse)
   
   # vascular plants - wetland sites 
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data")
-    wet_vascplant_pa <- read.csv("A_W05_Vascular_Plants.csv", row.names = NULL)
+    wet_vascplant_pa <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data/A_W05_Vascular_Plants.csv", row.names = NULL)
     
     # clean plant data set
     names(wet_vascplant_pa)
@@ -83,8 +81,7 @@ library(tidyverse)
   
   # load and clean wetland classification - terrestrial sites
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
-    siteclass <- read.csv("A_T01C_Site_Capability.csv")
+    siteclass <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data/A_T01C_Site_Capability.csv")
     # remove missing classificaiton values, and only retain the dominant site classification
     levels(siteclass$Percent.Area.of.Ecological.Site.Classification)
     siteclass <- siteclass %>% filter(Percent.Area.of.Ecological.Site.Classification!="VNA" & 
@@ -189,8 +186,7 @@ library(tidyverse)
   
   # load and clean wetland classification - wetland sites
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data")
-    siteclass_wet <- read.csv("A_W02B_Site_Capability.csv")
+    siteclass_wet <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Wetland data/A_W02B_Site_Capability.csv")
     # remove missing classificaiton values, and only retain the dominant site classification
     levels(siteclass_wet$Ecosite...Nutrient.Moisture.Code)
     siteclass_wet <- siteclass_wet %>% filter(Ecosite...Nutrient.Moisture.Code!="DNC" & 
@@ -335,8 +331,7 @@ library(tidyverse)
   
   #  load natural region site designation and add to veg_pa
   {
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/")
-    nr <- read.csv("Terrestrial_Wetland_Sites_all_NRs.csv")
+    nr <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/ABMI Site locations/Terrestrial_Wetland_Sites_all_NRs.csv")
     nr %>% distinct(Protocol, ABMI.Site) %>% tail(50) %>% data.frame() # note: must exclude the "W-" in wetland sites
     nr$ABMI.Site <- nr$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
     
@@ -365,16 +360,15 @@ head(veg_pa)
 veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
 
 # export
-setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/") 
-write.csv(x=veg_pa, file="ABMI veg cleaned.csv", row.names = F)
+# write.csv(x=veg_pa, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv", row.names = F)
 
 
 ##### HF Data Cleaning #####
 
 # HF data from ABMI excluding boreal
 {
-  setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/ABMI_250HFData/") 
-  terhf <- read.csv("Terrestrial250HFData.csv") %>% select("Site"="ABMI_Assigned_Site_ID", "Year"="Survey_Year", "FEATURE_TY", "Area_m2"="Shape_Area")
+  terhf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal ABMI_250HFData/Terrestrial250HFData.csv") %>% 
+    select("Site"="ABMI_Assigned_Site_ID", "Year"="Survey_Year", "FEATURE_TY", "Area_m2"="Shape_Area")
   terhf <- terhf %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-"))
@@ -383,8 +377,7 @@ write.csv(x=veg_pa, file="ABMI veg cleaned.csv", row.names = F)
   terhf <- terhf %>% select(-Area_m2)
   head(terhf)
   
-  setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/ABMI_250HFData/") 
-  wethf <- read.csv("Wetland250HFData.csv") 
+  wethf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal ABMI_250HFData/Wetland250HFData.csv") 
   wethf <- wethf %>% gather(key="FEATURE_TY", value="Area_percent", 7:ncol(wethf))
   wethf$Area_km2 <- wethf$Area_percent*(pi*0.25^2)
   wethf <- wethf  %>% select("Site"="ABMI_Site", "Year", "FEATURE_TY", "Area_km2")
@@ -409,8 +402,7 @@ write.csv(x=veg_pa, file="ABMI veg cleaned.csv", row.names = F)
   # Terrestrial Sites
   {
     # first load HF datasets
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/HF data/Site specific HF/vHFBuffer250m")
-    ter_hf <- read.csv("All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv")
+    ter_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal vHFBuffer250m/All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv")
     
     # average HF for sites with replicate measures (i.e. HF measured on different transects?)
     # extract proper site names
@@ -445,8 +437,7 @@ write.csv(x=veg_pa, file="ABMI veg cleaned.csv", row.names = F)
     # we will use a rolling join to identify the nearest years for which HF data was collected PRIOR TO and FOLLOWING veg collection
     # vascular plants - terrestrial sites
     {
-      setwd("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data")
-      vascplant_pa <- read.csv("A_T15_Vascular_Plants.csv", row.names = NULL)
+      vascplant_pa <- read.csv("/Users/cari/Desktop/Waterloo/ABMI Data/Terrestrial data/A_T15_Vascular_Plants.csv", row.names = NULL)
       names(vascplant_pa) <- colnames(vascplant_pa[,2:ncol(vascplant_pa)])
       vascplant_pa <- vascplant_pa[2:ncol(vascplant_pa)-1]
       names(vascplant_pa)
@@ -541,8 +532,7 @@ write.csv(x=veg_pa, file="ABMI veg cleaned.csv", row.names = F)
   # Wetland Sites
   {
     # first load HF datasets
-    setwd("/Users/cari/Desktop/Waterloo/ABMI Data/HF data/Site specific HF")
-    wet_hf <- read.csv("Wetland-ABMI-all-sites-HF-250mBuffer-BorealNR.csv")
+    wet_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal vHFBuffer250m/Wetland-ABMI-all-sites-HF-250mBuffer-BorealNR.csv")
     
     # average HF for sites with replicate measures (i.e. HF measured on different transects?)
     # extract proper site names
