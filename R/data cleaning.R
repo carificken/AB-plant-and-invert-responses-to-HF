@@ -380,7 +380,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   wethf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal HF 250 m buffer/Wetland250HFData.csv") 
   wethf <- wethf %>% gather(key="FEATURE_TY", value="Area_percent", 7:ncol(wethf))
   wethf$Area_km2 <- wethf$Area_percent*(pi*0.25^2)
-  wethf <- wethf  %>% select("Site"="ABMI_Site", "Year", "FEATURE_TY", "Area_km2")
+  wethf <- wethf  %>% select("Site", "Year", "FEATURE_TY", "Area_km2")
   wethf <- wethf %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-")) %>% 
