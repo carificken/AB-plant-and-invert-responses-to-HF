@@ -5,19 +5,20 @@ library(tidyverse); library(cowplot)
 veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
 
 # load HF data 
-hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
+hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% 
+  select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
 head(hf)
 
 # keep only data in each df for which we have BOTH data types
 keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
                         select(ungroup(hf), NRNAME, Protocol, WetlandType, Site, Year)) %>% distinct()
 head(keepsites)
-dim(keepsites) # 1653
+dim(keepsites) # 1711
 veg_pa <- left_join(keepsites, veg_pa, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-veg_pa %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1653
+veg_pa %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1711
 
 hf <- left_join(keepsites, hf, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-hf %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1653
+hf %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1711
 
 # summary of site breakdown
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(Protocol) %>% tally()
