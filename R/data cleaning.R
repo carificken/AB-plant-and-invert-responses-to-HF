@@ -1012,13 +1012,15 @@ unique(hf_alb$Site) # again, site IDs exclude "W-" and "-ABMI-" but INCLUDE trai
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(Protocol) %>% tally()
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(WetlandType) %>% tally()
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(NRNAME) %>% tally()
-  dim(hf_alb_wetlands)
-  head(hf_alb_wetlands)
+
 }
+dim(hf_alb_wetlands)
+head(hf_alb_wetlands)
 
 # add extra ID column for martin's matching
 hf_alb_wetlands <- hf_alb_wetlands %>% 
-  mutate(OGWSite=ifelse(Protocol=="Wetland", str_replace(Site, "OG", "OGW"), Site))
+  mutate(WSite=ifelse(Protocol=="Wetland", paste("W",Site,sep=""), Site)) %>% 
+  mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
 
 
 # export
