@@ -371,7 +371,8 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     select("Site"="ABMI_Assigned_Site_ID", "Year"="Survey_Year", "FEATURE_TY", "Area_m2"="Shape_Area")
   terhf <- terhf %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
-    mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-"))
+    mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-")) %>% 
+    mutate(Site = str_replace(Site, pattern="-SRD-", replacement = "-"))
   terhf$Protocol <- "Terrestrial"
   terhf$Area_km2 <- terhf$Area_m2/1000000
   terhf <- terhf %>% select(-Area_m2)
@@ -390,6 +391,8 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   
   hf_nonboreal <- bind_rows(terhf, wethf)
   hf_nonboreal <- hf_nonboreal %>% filter(!is.na(FEATURE_TY)) # Feature_ty = NA assigned for undeveloped land in ter sites, exclude and then add back in
+  # check site IDs: excludes W-, -ABMI-; includes trailing -1 etc
+  hf_nonboreal %>% distinct(Site) %>% filter(str_detect(Site, "OG-"))
 }
 
 # HF data from ABMI boreal only
@@ -399,14 +402,14 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   # but for MISMATCHING sites, i have veg data collected on offset years; for these i need to take average of HF data from 2 closest years
   library(readxl); library(data.table)
   
-  # Terrestrial Sites
+  # Boreal Terrestrial Sites
   {
     # first load HF datasets
-    ter_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal HF 250 m buffer/Terrestrial - All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv.csv")
+    ter_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal HF 250 m buffer/Terrestrial - All_HF_buff250m_OfficialNR_BorealRegion_2003_2016.csv")
     
     # average HF for sites with replicate measures (i.e. HF measured on different transects?)
     # extract proper site names
-    ter_hf <- ter_hf %>% select(Site=ABMI_Assigned_Site_ID,Year=survey_year, FEATURE_TY, Shape_Area) # rename site to tmpsite
+    ter_hf <- ter_hf %>% select(Site=ABMI_Assigned_Site_ID,Year=survey_year, FEATURE_TY, Shape_Area) 
     # ter_hf <- ter_hf %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     #   mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
     #   mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-")) %>% 
@@ -414,7 +417,7 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     #   mutate(Site = str_replace(Site, pattern="-SRD-", replacement = "-"))
     
     # some sites appear to have duplicated and/or questionable HF data provided; delete them 
-    ter_hf <- ter_hf %>% filter(Site!="OG-583-21") %>% droplevels()
+    ter_hf <- ter_hf %>% filter(Site!="OG-ABMI-583-21") %>% droplevels()
     
     # for other sites there are a number of area estimates for each FEATURE_TY; sum them and convert to km2
     ter_hf <- ter_hf %>% 
@@ -459,8 +462,8 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     
     head(vascplant_pa)
     head(ter_hf)
-    unique(vascplant_pa$Site)
-    unique(ter_hf$Site)
+    unique(vascplant_pa$Site) # we can keep the inner -ABMI- etc at first
+    unique(ter_hf$Site) # we can keep the inner -ABMI- etc at first
     
     # first we have to create DTs with just the ID variables
     # remove data columns from HF
@@ -523,13 +526,12 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     
     # keep only interp area
     hf_beforeafter_ter <- hf_beforeafter %>% select(Site,"Year"=VegYear, DistType,"Area_km2"="InterpArea")
-    hf_beforeafter_ter %>% filter(!is.na(Area_km2)) %>% distinct(Site,Year) %>% dim()
-    hf_beforeafter_ter$Protocol <- "Terrestrial"
+    hf_beforeafter_ter %>% filter(!is.na(Area_km2)) %>% distinct(Site,Year) %>% dim() # note that hf data and years can be missing if site is not in boreal region and therefore didnt have HF supplied
     
-    # note that hf data and years can be missing if site is not in boreal region and therefore didnt have HF supplied
+    unique(hf_beforeafter_ter$Site) # keep -ABMI- at first
   }
   
-  # Wetland Sites
+  # Boreal Wetland Sites
   {
     # first load HF datasets
     wet_hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/Boreal HF 250 m buffer/Wetland-ABMI-all-sites-HF-250mBuffer-BorealNR.csv")
@@ -635,8 +637,9 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     
     # keep only interp area
     hf_beforeafter_wet <- hf_beforeafter %>% select(Site,"Year"=VegYear, DistType,"Area_km2"="InterpArea")
-    hf_beforeafter_wet %>% filter(!is.na(Area_km2)) %>% distinct(Site,Year) %>% dim()
-    # note that hf data and years can be missing if site is not in boreal region and therefore didnt have HF supplied
+    hf_beforeafter_wet %>% filter(!is.na(Area_km2)) %>% distinct(Site,Year) %>% dim() # note that hf data and years can be missing if site is not in boreal region and therefore didnt have HF supplied
+    
+    unique(hf_beforeafter_wet$Site) # keep -ABMI- at first
   }
   
   # combine terrestrial and wetland interpolated hf dfs
@@ -647,20 +650,48 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
     hf_beforeafter_wet$Protocol <- "Wetland"
     
     hf_interp <- bind_rows(hf_beforeafter_ter, hf_beforeafter_wet)
+    
+    # now remove the -ABMI- in site IDs
+    hf_interp <- hf_interp %>% 
+      mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-CITSCI-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-SRD-", replacement = "-"))
+    
+    # check that site IDs exclue -ABMI-
+    unique(hf_interp$Site) %>% tail(100)
+    
+    # in order to join with NR, must also temporarily exclude trailing "-1's" 
+    hf_interp$tmpSite <- hf_interp$Site
+    hf_interp <- hf_interp %>% 
+      mutate(tmpSite = str_remove(string=tmpSite, pattern="-1$")) %>% 
+      mutate(tmpSite = str_remove(string=tmpSite, pattern="-2$")) %>% 
+      mutate(tmpSite = str_remove(string=tmpSite, pattern="-21$"))
+    
+    # check that trailing #s were removed
+    hf_interp %>% distinct(tmpSite) %>% filter(str_detect(tmpSite, "OG-")) %>% data.frame()
+    
   }
   
-  # keep only boreal sites
+  # keep only boreal sites; must join by the tmpSite ID which doesnt have trailing #s
     # load boreal sites
     {
-      boreal_sites <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv") %>% filter(NRNAME=="Boreal") %>% select(Protocol, Site=ABMI.Site) %>% distinct()
+      boreal_sites <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv") %>% 
+        filter(NRNAME=="Boreal") %>% select(Protocol, Site=ABMI.Site) %>% distinct()
       head(boreal_sites)
       boreal_sites <- boreal_sites %>% 
         mutate(Site=str_replace(string=Site, pattern="OGW-", replacement = "OG-")) %>% 
         mutate(Site=str_remove(string=Site, pattern="W-"))
+      
+      unique(boreal_sites$Site) # site IDs exclude "W-", "-ABMI-", and trailing "-1"
     }
 
-  # filter HF data based on boreal wetland sites
-    boreal_wetland_hf <- inner_join(boreal_sites, hf_interp, by=c("Protocol", "Site")) %>% filter(!is.na(Area_km2))
+  # filter HF data based on boreal wetland sites; join based on tmpSite in hf_interp, but then remove tmpSite column
+    boreal_wetland_hf <- inner_join(hf_interp, boreal_sites, by=c("Protocol", "tmpSite"="Site")) %>% filter(!is.na(Area_km2)) %>% select(-tmpSite)
+    dim(boreal_wetland_hf)  
+    boreal_wetland_hf %>% distinct(Site,Year) %>% nrow() #808 boreal sites
+
   }
 
 # now combine with rest of alberta HF data
@@ -686,9 +717,11 @@ head(hf_alb)
 hf_alb %>% dim()
 hf_alb %>% distinct() %>% dim()
 
+unique(hf_alb$Site) # again, site IDs exclude "W-" and "-ABMI-" but INCLUDE trailing #s (eg. -1)
+
 }
 
-# keep only wetland sites
+# keep only wetland sites; HF files include both wetland and non-wetland ABMI sites, use wetland classification to keep only wetland ABMI sites
 {
   # load and clean wetland classification - terrestrial sites
   {
@@ -728,6 +761,16 @@ hf_alb %>% distinct() %>% dim()
                                    marshsites,
                                    swampsites)
     
+    wetlandclassification <- wetlandclassification %>% ungroup() %>%      
+      mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-CITSCI-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="-SRD-", replacement = "-"))
+    
+    unique(wetlandclassification$Site)
+    head(wetlandclassification)
+    
     # how many repeated site classifications are there
     wetlandclassification <- wetlandclassification %>% group_by(Site, WetlandType) %>% summarize(meanCover=mean(Cover))
     wetlandclassification %>% mutate(NWetlandClasses=length(WetlandType)) %>% filter(NWetlandClasses>1) %>% arrange(desc(NWetlandClasses))
@@ -739,60 +782,62 @@ hf_alb %>% distinct() %>% dim()
     wetlandclassification %>% mutate(NWetlandClasses=length(WetlandType)) %>% filter(NWetlandClasses>1) %>% select(Site) %>% unique()
     
     # amend manually
-    wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
-    wetlandclassification[wetlandclassification$Site=="122","WetlandType"]  <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site=="1313","WetlandType"]  <- "Swamp"
-    wetlandclassification[wetlandclassification$Site=="270","WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site=="508","WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site=="529","WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site=="599","WetlandType"] <- "Swamp"
-    wetlandclassification[wetlandclassification$Site=="63","WetlandType"] <- "Wet Meadow"
-    wetlandclassification[wetlandclassification$Site=="652","WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site=="729","WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site=="992","WetlandType"] <- "Swamp"
-    wetlandclassification[wetlandclassification$Site=="OG-ABMI-653-1","WetlandType"]  <- "Swamp"
-    
-    wetlandclassification[wetlandclassification$Site=="625","WetlandType"] <- "Bog"
-    
-    # Fen x Marsh >> marsh
-    wetlandclassification[wetlandclassification$Site=="1393","WetlandType"] <- "Marsh"
-    wetlandclassification[wetlandclassification$Site==791,"WetlandType"] <- "Marsh"
-    wetlandclassification[wetlandclassification$Site=="OG-SRD-1239-1","WetlandType"] <- "Marsh"
-    
-    # Bog x Marsh >> marsh
-    wetlandclassification[wetlandclassification$Site=="OG-ABMI-1175-1","WetlandType"] <- "Marsh"
-    
-    # Bog x Fen >> Fen
-    wetlandclassification[wetlandclassification$Site==292,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==295,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==352,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==418,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==442,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==497,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==498,"WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site==561,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==627,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==631,"WetlandType"] <- "Rich Fen"
-    wetlandclassification[wetlandclassification$Site==728,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site==759,"WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site=="OG-ABMI-571-21","WetlandType"] <- "Poor Fen"
-    wetlandclassification[wetlandclassification$Site=="OG-ABMI-510-21","WetlandType"] <- "Poor Fen"
-    
-    # Fen x WetMeandow
-    wetlandclassification[wetlandclassification$Site==63,"WetlandType"] <- "Wet Meadow"
-    
-    # Bog x Swamp 
-    wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
-    
-    
-    # delete repeated Site classificaitons
-    wetlandclassification <- wetlandclassification %>% distinct(Site, WetlandType)
-    
-    # check to make sure each site has only 1 wetland classification
-    wetlandclassification %>% select(Site) %>% unique() %>% nrow() # 609 unique sites
-    wetlandclassification %>% select(Site, WetlandType) %>% unique() %>% nrow() # 609 unique site x wetlandtypes
-    wetlandclassification$Protocol <- "Terrestrial"
-  }
+    {
+      wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
+      wetlandclassification[wetlandclassification$Site=="122","WetlandType"]  <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site=="1313","WetlandType"]  <- "Swamp"
+      wetlandclassification[wetlandclassification$Site=="270","WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site=="508","WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site=="529","WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site=="599","WetlandType"] <- "Swamp"
+      wetlandclassification[wetlandclassification$Site=="63","WetlandType"] <- "Wet Meadow"
+      wetlandclassification[wetlandclassification$Site=="652","WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site=="729","WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site=="992","WetlandType"] <- "Swamp"
+      wetlandclassification[wetlandclassification$Site=="OG-653-1","WetlandType"]  <- "Swamp"
+      
+      wetlandclassification[wetlandclassification$Site=="625","WetlandType"] <- "Bog"
+      
+      # Fen x Marsh >> marsh
+      wetlandclassification[wetlandclassification$Site=="1393","WetlandType"] <- "Marsh"
+      wetlandclassification[wetlandclassification$Site==791,"WetlandType"] <- "Marsh"
+      wetlandclassification[wetlandclassification$Site=="OG-1239-1","WetlandType"] <- "Marsh"
+      
+      # Bog x Marsh >> marsh
+      wetlandclassification[wetlandclassification$Site=="OG-1175-1","WetlandType"] <- "Marsh"
+      
+      # Bog x Fen >> Fen
+      wetlandclassification[wetlandclassification$Site==292,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==295,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==352,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==418,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==442,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==497,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==498,"WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site==561,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==627,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==631,"WetlandType"] <- "Rich Fen"
+      wetlandclassification[wetlandclassification$Site==728,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site==759,"WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site=="OG-571-21","WetlandType"] <- "Poor Fen"
+      wetlandclassification[wetlandclassification$Site=="OG-510-21","WetlandType"] <- "Poor Fen"
+      
+      # Fen x WetMeandow
+      wetlandclassification[wetlandclassification$Site==63,"WetlandType"] <- "Wet Meadow"
+      
+      # Bog x Swamp 
+      wetlandclassification[wetlandclassification$Site=="120","WetlandType"] <- "Swamp"
+    }    
+      
+      # delete repeated Site classificaitons
+      wetlandclassification <- wetlandclassification %>% distinct(Site, WetlandType)
+      
+      # check to make sure each site has only 1 wetland classification
+      wetlandclassification %>% select(Site) %>% unique() %>% nrow() # 602 unique sites
+      wetlandclassification %>% select(Site, WetlandType) %>% unique() %>% nrow() # 602 unique site x wetlandtypes
+      wetlandclassification$Protocol <- "Terrestrial"
+   
+}
   
   # load and clean wetland classification - wetland sites
   {
@@ -826,7 +871,6 @@ hf_alb %>% distinct() %>% dim()
     marshsites_wetland$WetlandType <- "Marsh"
     swampsites_wetland$WetlandType <- "Swamp"
     
-    
     wetlandclassification_wetland <- rbind(bogsites_wetland,
                                            poorfensites_wetland,
                                            richfensites_wetland,
@@ -836,72 +880,78 @@ hf_alb %>% distinct() %>% dim()
                                            swampsites_wetland)
     
     # # extract proper site names add "wet" before site id
-    # wetlandclassification_wetland$Site <- paste("wet_",wetlandclassification_wetland$Site, sep="")
-    # wetlandclassification_wetland$Site <- wetlandclassification_wetland$Site %>% str_replace(pattern="OG-", replace="OGW-") 
+    unique(wetlandclassification_wetland$Site)
+    
+    wetlandclassification_wetland <- wetlandclassification_wetland %>% ungroup() %>%
+      mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>%
+      mutate(Site = str_replace(Site, pattern="OGW-", replacement = "OG-")) 
+    
     
     # MANY sites have repeated site classifications; 
-    # wetlandclassification_wetland <- wetlandclassification_wetland %>% distinct()
     wetlandclassification_wetland %>% group_by(Site,WetlandType) %>% tally() %>% filter(n>1) %>% arrange(desc(n))
     
     # note: many sites have multiple ecosite classifications; must take the DOMINANT classification ie the one which occurs most often
-    wetlandclassification_wetland <- wetlandclassification_wetland %>% group_by(Site,WetlandType) %>% tally() %>% ungroup() %>% group_by(Site) %>% filter(n==max(n)) %>% select(Site,WetlandType)
+    wetlandclassification_wetland <- wetlandclassification_wetland %>% 
+      group_by(Site,WetlandType) %>% 
+      tally() %>% ungroup() %>% group_by(Site) %>% filter(n==max(n)) %>% select(Site,WetlandType)
     
-    # we still have 33 sites w/ double split classifications; ammend manually
+    # we still have 38 sites w/ double split classifications; ammend manually
     wetlandclassification_wetland %>% group_by(Site) %>% tally() %>% filter(n>1) %>% arrange(desc(n)) %>% select(Site) %>% data.frame()
     
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="207","WetlandType"] <- "Swamp"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="210","WetlandType"] <- "Swamp"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="296","WetlandType"] <- "Rich Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="390","WetlandType"] <- "Poor Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="595","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="924","WetlandType"] <- "Wet Meadow"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-628-21","WetlandType"] <- "Rich Fen"
-    
-    # marsh + wet meadow >> marsh
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1057","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1333","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1363","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1370","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1429","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1435","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1611","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1651","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="236","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-511-21","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="826","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="956","WetlandType"] <- "Marsh"
-    
-    # bog + marsh >> "bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="154","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="20","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="362","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="416","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="OGW-ABMI-469-1","WetlandType"] <- "Bog"
-    
-    # fen + marsh >> marsh
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="157","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="1570","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="237","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="247","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="387","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="418","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="467","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="553","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="754","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="829","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="851","WetlandType"] <- "Marsh"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="899","WetlandType"] <- "Marsh"
-    
-    # bog + fen >> Fen
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="16","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="295","WetlandType"] <- "Rich Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="298","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="417","WetlandType"] <- "Bog"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="560","WetlandType"] <- "Rich Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="621","WetlandType"] <- "Poor Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="726","WetlandType"] <- "Poor Fen"
-    wetlandclassification_wetland[wetlandclassification_wetland$Site=="842","WetlandType"] <- "Poor Fen"
-    
+    {    
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="207","WetlandType"] <- "Swamp"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="210","WetlandType"] <- "Swamp"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="296","WetlandType"] <- "Rich Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="390","WetlandType"] <- "Poor Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="595","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="924","WetlandType"] <- "Wet Meadow"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="OG-628-21","WetlandType"] <- "Rich Fen"
+      
+      # marsh + wet meadow >> marsh
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1057","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1333","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1363","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1370","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1429","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1435","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1611","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1651","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="236","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="OG-511-21","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="826","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="956","WetlandType"] <- "Marsh"
+      
+      # bog + marsh >> "bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="154","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="20","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="362","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="416","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="OG-469-1","WetlandType"] <- "Bog"
+      
+      # fen + marsh >> marsh
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="157","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="1570","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="237","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="247","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="387","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="418","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="467","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="553","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="754","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="829","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="851","WetlandType"] <- "Marsh"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="899","WetlandType"] <- "Marsh"
+      
+      # bog + fen >> Fen
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="16","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="295","WetlandType"] <- "Rich Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="298","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="417","WetlandType"] <- "Bog"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="560","WetlandType"] <- "Rich Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="621","WetlandType"] <- "Poor Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="726","WetlandType"] <- "Poor Fen"
+      wetlandclassification_wetland[wetlandclassification_wetland$Site=="842","WetlandType"] <- "Poor Fen"
+  } 
     
     # delete repeated Site classificaitons
     wetlandclassification_wetland <- wetlandclassification_wetland %>% distinct()
@@ -918,15 +968,16 @@ hf_alb %>% distinct() %>% dim()
 
   # add wetland classification to hf df
   head(hf_alb)
-  hf_alb %>% distinct(Protocol, Site) %>% dim() #1849 sites w/ HF data
-  wetlandclassification_all %>% distinct(Protocol, Site) %>% dim() # 1477 wetlands
+  hf_alb %>% distinct(Protocol, Site) %>% dim() # 1969 sites w/ HF data
+  wetlandclassification_all %>% distinct(Protocol, Site) %>% dim() # 1470 wetlands
   left_join(hf_alb, wetlandclassification_all, by=c("Protocol", "Site")) %>% 
     filter(!is.na(WetlandType)) %>% 
-    distinct(Protocol, Site) %>% dim() # 1126 wetlands with HF data
+    distinct(Protocol, Site) %>% dim() # 1253 wetlands with HF data
   
-  # combine wetland classifications
-  wetlandclassification_all <- bind_rows(wetlandclassification, wetlandclassification_wetland)
-  wetlandclassification_all %>% distinct(Site) %>% dim()
+  # many sites classified as wetland do not have HF data; why not?
+  anti_join(wetlandclassification_all, hf_alb, by=c("Protocol", "Site")) %>% group_by(Protocol, WetlandType) %>% tally() 
+  anti_join(wetlandclassification_all, hf_alb, by=c("Protocol", "Site"))
+  hf_alb %>% filter(str_detect(Site, "122")) %>% distinct(Protocol, Site, Year)
   
   hf_alb_wetlands <- left_join(hf_alb, wetlandclassification_all, by=c("Protocol", "Site")) 
   tmp <- filter(hf_alb_wetlands, is.na(WetlandType) & Protocol=="Wetland") # wetland sites w/o classification are SOWWs
@@ -934,7 +985,8 @@ hf_alb %>% distinct() %>% dim()
   hf_alb_wetlands <- hf_alb_wetlands %>% filter(!is.na(WetlandType)) # excludes wetland and terrestrial sites without classification
 
   hf_alb_wetlands <- bind_rows(hf_alb_wetlands,tmp) # adds SOWWs back to dataset
-
+  head(hf_alb_wetlands)
+  unique(hf_alb_wetlands$Site) # site IDs exclude "W-" and "-ABMI-" but include trailing #s
 }
 
 # add NR names to df
@@ -943,23 +995,33 @@ hf_alb %>% distinct() %>% dim()
   nr %>% distinct(Protocol, ABMI.Site) %>% tail(50) %>% data.frame() # note: must exclude the "W-" in wetland sites
   nr$ABMI.Site <- nr$ABMI.Site %>% str_remove(pattern="W") %>% str_remove(pattern="-*")
   
-  head(nr)
-  
+  unique(nr$ABMI.Site) # NR excludes "W-", "-ABMI-" AND trailing #s; 
+  # must creating temporary matching ID which excludes trailing #s to match with nr
   hf_alb_wetlands$tmpSiteMatch <- paste(str_extract(string=hf_alb_wetlands$Site, pattern="OG-"), str_extract(string=hf_alb_wetlands$Site, pattern="\\d+"), sep="") 
   hf_alb_wetlands$tmpSiteMatch <- hf_alb_wetlands$tmpSiteMatch %>% str_remove(pattern="NA")
+  unique(hf_alb_wetlands$tmpSiteMatch)
   
-  hf_alb_wetlands <- left_join(hf_alb_wetlands, select(nr, Protocol, ABMI.Site, NSRNAME, NRNAME), by=c("Protocol", "tmpSiteMatch"="ABMI.Site")) %>% select(-tmpSiteMatch) %>% distinct()
+  # join nr and hf dfs based on matching site, then remove that colum
+  hf_alb_wetlands <- left_join(hf_alb_wetlands, 
+                               select(nr, Protocol, ABMI.Site, NSRNAME, NRNAME), 
+                               by=c("Protocol", "tmpSiteMatch"="ABMI.Site")) %>% 
+    select(-tmpSiteMatch) %>% distinct()
   
-  hf_alb_wetlands %>% filter(is.na(NRNAME)) %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) #18 sites w/o NR; not listed on coordinates
+  hf_alb_wetlands %>% filter(is.na(NRNAME)) %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) # 70 sites w/o NR and do not have coordinates
   hf_alb_wetlands <- hf_alb_wetlands  %>% filter(!is.na(NRNAME))
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(Protocol) %>% tally()
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(WetlandType) %>% tally()
   hf_alb_wetlands %>% distinct(Protocol, Site, Year, WetlandType, NRNAME) %>% group_by(NRNAME) %>% tally()
   dim(hf_alb_wetlands)
+  head(hf_alb_wetlands)
 }
+
+# add extra ID column for martin's matching
+hf_alb_wetlands <- hf_alb_wetlands %>% 
+  mutate(OGWSite=ifelse(Protocol=="Wetland", str_replace(Site, "OG", "OGW"), Site))
+
 
 # export
 {
-  setwd("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/")
-  write.csv(x=hf_alb_wetlands, file="Alb wetlands HF.csv", row.names=F)
+  write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
 }
