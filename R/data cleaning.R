@@ -1023,7 +1023,16 @@ hf_alb_wetlands <- hf_alb_wetlands %>%
   mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
 
 
+
+# convert area to precent; organize order of columns
+plotarea <- pi*0.25^2
+plotarea
+head(hf_alb_wetlands) 
+hf_alb_wetlands <- hf_alb_wetlands %>% rowwise() %>% 
+  mutate(Area_percent = 100*Area_km2/plotarea) %>% 
+  select(NRNAME, NSRNAME, Protocol, Site, WSite, Year, HFCategory, FEATURE_TY, Area_percent) 
+
 # export
 {
-write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
+  write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
   }
