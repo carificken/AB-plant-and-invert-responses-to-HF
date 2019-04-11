@@ -3,17 +3,20 @@ library(tidyverse); library(cowplot)
 
 # load plant data
 veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
+veg_pa %>% distinct(Protocol, Site, Year) %>% nrow()
 
 # load HF data 
 hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% 
   select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
-head(hf)
+hf %>% distinct(Protocol, Site, Year) %>% nrow()
 
 # keep only data in each df for which we have BOTH data types
 keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
                         select(ungroup(hf), NRNAME, Protocol, WetlandType, Site, Year)) %>% distinct()
 head(keepsites)
 dim(keepsites) # 1711
+keepsites %>% distinct(Protocol, Site, Year) %>% nrow()
+
 veg_pa <- left_join(keepsites, veg_pa, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
 veg_pa %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1711
 
