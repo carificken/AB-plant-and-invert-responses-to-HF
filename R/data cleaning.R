@@ -3,7 +3,7 @@ rm(list=ls())
 library(tidyverse)
 
 ##### Vegetation Data Cleaning #####
-
+{
 # load plant data
 {
   # vascular plants - terrestrial sites
@@ -216,7 +216,6 @@ library(tidyverse)
     marshsites_wetland$WetlandType <- "Marsh"
     swampsites_wetland$WetlandType <- "Swamp"
     
-    
     wetlandclassification_wetland <- rbind(bogsites_wetland,
                                            poorfensites_wetland,
                                            richfensites_wetland,
@@ -318,7 +317,6 @@ library(tidyverse)
     
     plant_pa2 <- bind_rows(plant_pa,tmp) # adds SOWWs back to dataset
     plant_pa2 <- plant_pa2 %>% group_by(Species) %>% mutate(n=sum(PA)) %>% filter(n>1) %>% select(-n) %>% ungroup()
-    
   }
   
   veg_pa <- plant_pa2 # plant_pa excludes SOWWs; plant_pa2 includes SOWWs
@@ -327,7 +325,6 @@ library(tidyverse)
   veg_pa <- veg_pa %>% mutate(Site = str_replace(Site, pattern="-ABMI-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-ALPAC-", replacement = "-")) %>% 
     mutate(Site = str_replace(Site, pattern="-DH-", replacement = "-"))
-  
   
   #  load natural region site designation and add to veg_pa
   {
@@ -356,15 +353,12 @@ library(tidyverse)
   
 }
 
-head(veg_pa)
 veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-
-# export
-# write.csv(x=veg_pa, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv", row.names = F)
-
+head(veg_pa)
+}
 
 ##### HF Data Cleaning #####
-
+{
 # HF data from ABMI excluding boreal
 {
   terhf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/hf/non-Boreal HF 250 m buffer/Terrestrial250HFData.csv") %>% 
@@ -690,9 +684,8 @@ veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, 
   # filter HF data based on boreal wetland sites; join based on tmpSite in hf_interp, but then remove tmpSite column
     boreal_wetland_hf <- inner_join(hf_interp, boreal_sites, by=c("Protocol", "tmpSite"="Site")) %>% filter(!is.na(Area_km2)) %>% select(-tmpSite)
     dim(boreal_wetland_hf)  
-    boreal_wetland_hf %>% distinct(Site,Year) %>% nrow() #808 boreal sites
-
-  }
+    boreal_wetland_hf %>% distinct(Site,Year) %>% nrow() #808 boreal sites  
+    }
 
 # now combine with rest of alberta HF data
 {
@@ -1017,22 +1010,72 @@ unique(hf_alb$Site) # again, site IDs exclude "W-" and "-ABMI-" but INCLUDE trai
 dim(hf_alb_wetlands)
 head(hf_alb_wetlands)
 
-# add extra ID column for martin's matching
-hf_alb_wetlands <- hf_alb_wetlands %>% 
-  mutate(WSite=ifelse(Protocol=="Wetland", paste("W",Site,sep=""), Site)) %>% 
-  mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
-
-
 
 # convert area to precent; organize order of columns
 plotarea <- pi*0.25^2
 plotarea
-head(hf_alb_wetlands) 
 hf_alb_wetlands <- hf_alb_wetlands %>% rowwise() %>% 
   mutate(Area_percent = 100*Area_km2/plotarea) %>% 
-  select(NRNAME, NSRNAME, Protocol, Site, WSite, Year, HFCategory, FEATURE_TY, Area_percent) 
+  select(NRNAME, NSRNAME, Protocol, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_percent) 
+}
+
+#### make veg and HF data sets compatible; add in sites with 0 hf from veg df
+{
+  vegsites <- select(veg_pa, -Species, -PA) %>% distinct()
+  hfsites <- select(hf_alb_wetlands, -FEATURE_TY, -Area_percent, -HFCategory, -NSRNAME) %>% distinct()
+  bothsites <- inner_join(vegsites, hfsites) %>% distinct()
+  
+  dim(vegsites) # 2054
+  dim(hfsites) # 1866
+  dim(bothsites) # 1711
+  
+  anti_join(vegsites, hfsites) %>% distinct() %>% group_by(Protocol) %>% tally() # 343 veg sites that don't have HF data
+  missingsites <- anti_join(vegsites, hfsites) %>% distinct()
+  dim(missingsites) 
+  anti_join(hfsites, vegsites) %>% distinct() %>% group_by(Protocol) %>% tally() # 155 hf sites that don't have veg data - why not?
+  
+  hf_alb_wetlands %>% 
+    group_by(Protocol, Site, Year) %>% 
+    summarize(totdist=sum(Area_percent)) %>% 
+    group_by(Protocol) %>% top_n(n=-3, wt=totdist) # note: terrestrial sites need to have 0s added back in!
+  
+  # sum all features into HF cats
+  hf_alb_wetlands <- hf_alb_wetlands %>% 
+    group_by(NRNAME, Protocol, WetlandType, Site, Year, HFCategory) %>% 
+    summarize(Area_percent=sum(Area_percent)) 
+  
+  hf_alb_wetlands %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1866
+  
+  # add in 0% hf for sites with veg data but missing hf data
+  hf_alb_wetlands <- left_join(vegsites, hf_alb_wetlands, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
+  hf_alb_wetlands <- hf_alb_wetlands %>% replace_na(list(HFCategory="Agriculture")) # add placeholder HF Category name
+  hf_alb_wetlands %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 2054
+  
+  hf_alb_wetlands <- hf_alb_wetlands %>% 
+    spread(key=HFCategory, value=Area_percent) %>% 
+    gather(key=HFCategory, value=Area_percent, 6:ncol(.)) %>%
+    replace_na(list(Area_percent=0))
+  hf_alb_wetlands %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 2054
+  
+  # add extra ID column for martin's matching, and re-order columns
+  hf_alb_wetlands <- hf_alb_wetlands %>% 
+    mutate(WSite=ifelse(Protocol=="Wetland", paste("W",Site,sep=""), Site)) %>% 
+    mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
+  hf_alb_wetlands <- hf_alb_wetlands %>% select(NRNAME, Protocol, WetlandType, WSite, Site, Year, HFCategory, Area_percent)
+  veg_pa <- veg_pa %>% 
+    mutate(WSite=ifelse(Protocol=="Wetland", paste("W",Site,sep=""), Site)) %>% 
+    mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
+  veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, WSite, Site, Year, Species, PA)
+}
+
+# want 0 non-overlapping rows for both anti-joins
+anti_join(select(hf_alb_wetlands, NRNAME, Protocol, WetlandType, WSite, Site, Year), 
+          select(veg_pa, NRNAME, Protocol, WetlandType, WSite, Site, Year)) 
+anti_join(select(veg_pa, NRNAME, Protocol, WetlandType, WSite, Site, Year), 
+          select(hf_alb_wetlands, NRNAME, Protocol, WetlandType, WSite, Site, Year)) 
 
 # export
-{
-  write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
-  }
+## veg
+# write.csv(x=veg_pa, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv", row.names = F)
+# hf
+## write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
