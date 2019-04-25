@@ -6,22 +6,8 @@ veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses t
 veg_pa %>% distinct(Protocol, Site, Year) %>% nrow()
 
 # load HF data 
-hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% 
-  select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
+hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") 
 hf %>% distinct(Protocol, Site, Year) %>% nrow()
-
-# keep only data in each df for which we have BOTH data types
-keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
-                        select(ungroup(hf), NRNAME, Protocol, WetlandType, Site, Year)) %>% distinct()
-head(keepsites)
-dim(keepsites) # 1711
-keepsites %>% distinct(Protocol, Site, Year) %>% nrow()
-
-veg_pa <- left_join(keepsites, veg_pa, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-veg_pa %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1711
-
-hf <- left_join(keepsites, hf, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-hf %>% distinct(NRNAME, Protocol, WetlandType, Site, Year) %>% dim() # 1711
 
 # summary of site breakdown
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(Protocol) %>% tally()
@@ -29,26 +15,25 @@ veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(Wetland
 veg_pa %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
 
 
-# compute total dist of each HF Cat
-hf <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year, HFCategory) %>% summarize(totdist_cat_km2 = sum(Area_km2))
+# compute total dist of each HF Cat - this doesn't make much sense b/c we are summing percents
 head(hf)
-ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% summarize(totdist=sum(totdist_cat_km2)) %>% 
+ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
   ggplot(aes(x=NRNAME, y=totdist, fill=HFCategory)) +
   geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Total Area (km2)") +
+  labs(x=NULL, y="Total Area (down-scaled km2)") +
   theme_classic() +
   theme(legend.position = "top",
         legend.title=element_blank())
 
-ppropdist <- hf %>% 
-  group_by(NRNAME, HFCategory) %>% 
-  summarize(totdist=sum(totdist_cat_km2)) %>% 
+ppropdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
   group_by(NRNAME) %>%  
   mutate(totdist_all = sum(totdist),
          propdist=100*totdist/totdist_all) %>% 
   ggplot(aes(x=NRNAME, y=propdist, fill=HFCategory)) +
   geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Proportional Developed Area (%)") +
+  labs(x=NULL, y="Proportional Developed Area (down-scaled %)") +
   theme_classic() +
   theme(legend.position = "top",
         legend.title=element_blank())
@@ -65,10 +50,10 @@ hfcats
 
 
 # calculate total disturbance
-hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_km2=sum(totdist_cat_km2))
-ggplot(hf_tot, aes(x=totdist_km2)) + 
+hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
+ggplot(hf_tot, aes(x=totdist_percent)) + 
   geom_histogram(fill="grey80", color="black") + 
-  labs(x="Total Developed Area (km2)", y="Num. Wetlands") +
+  labs(x="Total Developed Area (% of plot)", y="Num. Wetlands") +
   ggtitle ("Distribution of total human development in AB") +
   theme_classic() +
   theme(legend.position = "none")
@@ -77,11 +62,11 @@ ggplot(hf_tot, aes(x=totdist_km2)) +
 # calculate SSI for each speceis
 {
   # first create 10 bins
-  hf_tot$HFbin <- ntile(hf_tot$totdist_km2, n=10) 
+  hf_tot$HFbin <- ntile(hf_tot$totdist_percent, n=10) 
   
   hf_tot %>%
     ggplot(aes(x=HFbin)) +
-    geom_histogram(bins=10, color=1, fill="white") # approx 140 sites per bin
+    geom_histogram(bins=10, color=1, fill="white") # approx 200 sites per bin
   
   veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
   
@@ -99,9 +84,15 @@ ggplot(hf_tot, aes(x=totdist_km2)) +
   occfreq_HFbin <- veg_hf %>% 
       group_by(HFbin,Species) %>% 
       summarize(occ_freq=sum(PA))
-  
+
   # exclude species which occur only 1x - they will have high sensitivity
-  unique(occfreq_HFbin$Species) %>% length() # 883 species total; 34 sp occur 1x 
+  occfreq_HFbin %>% ungroup() %>% distinct(Species) %>% nrow() # 905 species total; 2 sp occur 1x 
+  # occfreq_HFbin %>%
+  #   arrange(Species) %>%
+  #   group_by(Species) %>%
+  #   summarize(cum_occ_freq = sum(occ_freq)) %>%
+  #   filter(cum_occ_freq<=1) %>%
+  #   nrow()
   
   occfreq_HFbin <- occfreq_HFbin %>% 
     arrange(Species) %>% 
@@ -129,7 +120,27 @@ ggplot(hf_tot, aes(x=totdist_km2)) +
 {
   # distribution of CV for each species
   ggplot(sp_SSI, aes(x=CV)) + geom_histogram(bins=50)
-
+  
+  # which species have very high SSI?
+  sp_SSI %>% filter(CV>3) %>% select(Species) -> tmp
+  occfreq_HFbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq)) %>% 
+    filter(Species %in% tmp$Species) %>% 
+    distinct(Species, cum_occ_freq) %>% arrange(desc(cum_occ_freq)) %>% data.frame()
+  
+  occfreq_HFbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq)) %>% 
+    filter(Species %in% tmp$Species) %>% 
+    ggplot(aes(x=HFbin, y=occ_freq)) +
+    geom_bar(stat="identity") +
+    scale_x_discrete(limits=c(1:10)) +
+    facet_wrap(~Species) +
+    theme_bw()
+  
   # relationship between cum occ freq and CV scores
   left_join(sp_SSI, occfreq_HFbin) %>%  
     group_by(Species, CV) %>% summarize(cum_occ_freq = sum(occ_freq)) %>% 
@@ -157,27 +168,27 @@ ggplot(hf_tot, aes(x=totdist_km2)) +
     geom_histogram(bins=30) 
 
 # relationship between veg community specialization and HF
-ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=Protocol)) +
+ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
   ggtitle("Protocol") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   facet_wrap(~Protocol) +
   theme_classic() +
   theme(legend.position = "none")
 
-ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=WetlandType)) +
+ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=WetlandType)) +
   ggtitle("Wetland Class") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   theme_classic() +
   facet_wrap(~WetlandType) +
   theme(legend.position = "none")
 
-ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
+ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
   ggtitle("Natural Region") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   theme_classic() +
@@ -191,8 +202,8 @@ ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   
-  ggplot(spR, aes(x=totdist_km2, y=rich)) +
-    labs(x="Total Human Development (km2)", y="Species Richness") +
+  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
     theme_classic()
@@ -234,7 +245,7 @@ ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
   # no correlation between total development and clim conditions
   left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
     gather(key="ClimVar", value=Value, 9:ncol(.)) %>% 
-    ggplot(aes(x=totdist_km2, y=Value, color=ClimVar)) +
+    ggplot(aes(x=totdist_percent, y=Value, color=ClimVar)) +
     geom_point(alpha=0.5) +
     facet_wrap(~ClimVar, scales="free_y") +
     # geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
@@ -317,3 +328,134 @@ ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
   mean(fit$rsq)
   
 }
+
+# ordinations of the highest and lowest disturbed sites
+veg_hf2 <- veg_hf %>% 
+  select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+head(veg_hf2)
+veg_hf2 <- veg_hf2 %>% 
+  spread(key=Species, value=PA) %>% 
+  gather(key=Species, value=PA, 6:ncol(.)) %>% 
+  replace_na(list(PA=0)) %>% 
+  spread(key=Species, value=PA) 
+
+veg_hf2 <- left_join(veg_hf2, select(hf_tot, -totdist_percent), by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+veg_hf2 <- veg_hf2 %>% filter(HFbin==1 | HFbin==10) %>% select(NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+
+veg_hf2[1:5,1:10]
+
+# distance matrix
+veg_d <- vegdist(veg_hf2[,7:ncol(veg_hf2)], method="jaccard", binary=T)
+
+# check for sig diffs among groups
+mrpp(veg_d, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
+
+# run ordinations to compare stress across diff axis numbers
+{
+  veg.nmds2 <- metaMDS(veg_d, k=2,trymax=100)
+  veg.nmds3 <- metaMDS(veg_d, k=3,trymax=100)
+  veg.nmds4 <- metaMDS(veg_d, k=4,trymax=100)
+  veg.nmds5 <- metaMDS(veg_d, k=5,trymax=100)
+  veg.nmds6 <- metaMDS(veg_d, k=6,trymax=100)
+  veg.nmds7 <- metaMDS(veg_d, k=7,trymax=100)
+  veg.nmds8 <- metaMDS(veg_d, k=8,trymax=100)
+  veg.nmds9 <- metaMDS(veg_d, k=9,trymax=100)
+  veg.nmds10 <- metaMDS(veg_d, k=10,trymax=100)
+  veg.nmds11 <- metaMDS(veg_d, k=11,trymax=100)
+  veg.nmds12 <- metaMDS(veg_d, k=12,trymax=100)
+  veg.nmds13 <- metaMDS(veg_d, k=13,trymax=100)
+  veg.nmds14 <- metaMDS(veg_d, k=14,trymax=100)
+  
+  data.frame(Dim=c(veg.nmds2$ndim,
+                   veg.nmds3$ndim,
+                   veg.nmds4$ndim,
+                   veg.nmds5$ndim,
+                   veg.nmds6$ndim,
+                   veg.nmds7$ndim,
+                   veg.nmds8$ndim,
+                   veg.nmds9$ndim,
+                   veg.nmds10$ndim,
+                   veg.nmds11$ndim,
+                   veg.nmds12$ndim,
+                   veg.nmds13$ndim,
+                   veg.nmds14$ndim),
+             Stress=c(veg.nmds2$stress,
+                      veg.nmds3$stress,
+                      veg.nmds4$stress,
+                      veg.nmds5$stress,
+                      veg.nmds6$stress,
+                      veg.nmds7$stress,
+                      veg.nmds8$stress,
+                      veg.nmds9$stress,
+                      veg.nmds10$stress,
+                      veg.nmds11$stress,
+                      veg.nmds12$stress,
+                      veg.nmds13$stress,
+                      veg.nmds14$stress) ) %>%
+    ggplot(aes(x=Dim,y=Stress)) + geom_point() + geom_line() + scale_x_continuous(breaks=c(1:15)) +
+    geom_hline(yintercept = c(0.1,0.05), color="red") +
+    annotate("text", x=2.5, y=c(.102,.052), label=c("stress=0.1", "stress=0.05"), color="red")
+}
+
+veg.nmds4 <- metaMDS(veg_hf2[,7:ncol(veg_hf2)], distance="jaccard", binary=T, k=4,trymax=100)
+
+# extract site scores and convert to df
+veg.scores <- data.frame(scores(veg.nmds4, "sites"))
+# add in protocol, site, year, 
+veg.scores$Protocol <- as.factor(veg_hf2$Protocol)
+veg.scores$Site <- veg_hf2$Site
+veg.scores$Year <- veg_hf2$Year
+veg.scores$NRNAME <- veg_hf2$NRNAME
+veg.scores$HFbin <- veg_hf2$HFbin
+head(veg.scores)
+
+ggplot(veg.scores, aes(x=NMDS1, y=NMDS2, 
+                       color=as.factor(HFbin), 
+                       shape=as.factor(HFbin))) +
+  geom_point(size=3) + 
+  stat_ellipse() +
+  scale_color_brewer(palette = "Dark2", name="HF Bin") +
+  scale_shape_manual(values=c(15,16), name="HF Bin") +
+  # geom_label(aes(label=Site)) +
+  theme_bw() +
+  guides(col=guide_legend(ncol=4)) +
+  theme(legend.position = "top", 
+        panel.grid=element_blank())
+
+ggplot(veg.scores, aes(x=NMDS3, y=NMDS4, color=as.factor(HFbin), shape=as.factor(HFbin))) +
+  geom_point(size=3) + 
+  stat_ellipse() +
+  scale_color_brewer(palette = "Dark2", name="HF Bin") +
+  scale_shape_manual(values=c(15,16), name="HF Bin") +
+  # geom_label(aes(label=Site)) +
+  theme_bw() +
+  guides(col=guide_legend(ncol=4)) +
+  theme(legend.position = "top", 
+        panel.grid=element_blank())
+
+spscores <- data.frame(scores(veg.nmds4, display="species"))
+
+spscores$Species <- rownames(spscores)
+
+impsp_5 <- bind_rows(top_n(spscores, 5, wt=NMDS1),
+                     top_n(spscores, -5, wt=NMDS1))
+
+ggplot(data=impsp_5) +
+  geom_point(data=veg.scores, 
+             aes(x=NMDS1, y=NMDS2, 
+                 color=as.factor(HFbin), 
+                 shape=as.factor(HFbin)),
+             size=3) +
+  stat_ellipse(data=veg.scores, 
+               aes(x=NMDS1, y=NMDS2, 
+                   color=as.factor(HFbin))) +
+  scale_color_brewer(palette = "Dark2", name="HF Bin") +
+  scale_shape_manual(values=c(15,16), name="HF Bin") +
+  geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+               color=1,
+               arrow=arrow(length=unit(0.3, "cm"))) +
+  geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+                   box.padding=1, size=3.5) +
+  theme(legend.position="top")
+
+spdriversp

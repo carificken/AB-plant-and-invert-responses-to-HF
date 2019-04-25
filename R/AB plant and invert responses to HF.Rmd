@@ -8,6 +8,14 @@ output:
   pdf_document: default
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message=F, warning=F)
+library(tidyverse) 
+library(vegan)
+library(ggrepel)
+library(cowplot)
+```
+
 The goal of this project is to compare and contrast the responses of plants and invertebrates to environmental gradients. It uses the following data:
 
 
@@ -32,27 +40,19 @@ The vegetation file (`veg_pa`) includes vegetation occurrence (i.e. presence-abs
 
 The human footprint df (`hf`) provides area estimates (km^2) of different specific human footprint types. Each type (`FEATURE_TY`) has been assigned a higher-order category (`HFCateogry`) based on ABMI's HF metadata. Sum the total disturbance of each HF Category at each site in `hf`. 
 
-```{r echo=F, warning=F, message=F}
+```{r}
 # load veg data
-library(tidyverse); library(cowplot)
 veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
-
 # load HF data 
-hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") %>% select(Protocol, NRNAME, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_km2)
-
-# keep only data in each df for which we have BOTH data types
-keepsites <- inner_join(select(ungroup(veg_pa), NRNAME, Protocol, WetlandType, Site, Year),
-                        select(ungroup(hf), NRNAME, Protocol, WetlandType, Site, Year)) %>% distinct()
-veg_pa <- left_join(keepsites, veg_pa, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-hf <- left_join(keepsites, hf, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") 
 ```
 
-Let's explore the distribution of sites. We have `r nrow(keepsites)` wetlands in total.
+Let's explore the distribution of sites. We have `r nrow(distinct(hf, Protocol, Site, Year) %>% nrow())` wetlands in total.
 
 ```{r}
-keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(Protocol) %>% tally()
-keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(WetlandType) %>% tally()
-keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
+hf %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(Protocol) %>% tally()
+hf %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(WetlandType) %>% tally()
+hf %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
 ```
 
 
@@ -61,24 +61,23 @@ keepsites %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRN
 The plots below show the total land develped in each natural region, as divided by each HF Category. It also shows the proportion of total developed land in each NR that is attributed to each HF category. Note that wetlands in the Canadian Shield do not have any development in their immediate vicitinty.
 
 ```{r echo=F, warning=F, message=F}
-hf <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year, HFCategory) %>% summarize(totdist_cat_km2 = sum(Area_km2))
-ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% summarize(totdist=sum(totdist_cat_km2)) %>% 
+ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
   ggplot(aes(x=NRNAME, y=totdist, fill=HFCategory)) +
   geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Total Area (km2)") +
+  labs(x=NULL, y="Total Area (down-scaled km2)") +
   theme_classic() +
   theme(legend.position = "top",
         legend.title=element_blank())
 
-ppropdist <- hf %>% 
-  group_by(NRNAME, HFCategory) %>% 
-  summarize(totdist=sum(totdist_cat_km2)) %>% 
+ppropdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
   group_by(NRNAME) %>%  
   mutate(totdist_all = sum(totdist),
          propdist=100*totdist/totdist_all) %>% 
   ggplot(aes(x=NRNAME, y=propdist, fill=HFCategory)) +
   geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Proportional Developed Area (%)") +
+  labs(x=NULL, y="Proportional Developed Area (down-scaled %)") +
   theme_classic() +
   theme(legend.position = "top",
         legend.title=element_blank())
@@ -97,13 +96,11 @@ hfcats
 
 Create a new df with the total human development at each site (`hf_tot`). The histogram below shows the distribution of each HF Category across all focal sites. 
 
-```{r echo=F, warning=F, message=F}
-hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>%
-  summarize(totdist_km2=sum(totdist_cat_km2))
-
-ggplot(hf_tot, aes(x=totdist_km2)) + 
+```{r}
+hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
+ggplot(hf_tot, aes(x=totdist_percent)) + 
   geom_histogram(fill="grey80", color="black") + 
-  labs(x="Total Developed Area (km2)", y="Num. Wetlands") +
+  labs(x="Total Developed Area (% of plot)", y="Num. Wetlands") +
   ggtitle ("Distribution of total human development in AB") +
   theme_classic() +
   theme(legend.position = "none")
@@ -121,19 +118,11 @@ We can calculate the sensitivity of a species to HF by examining its total numbe
 4. The resulting df is called `sp_SSI`
 
 
-```{r echo=F, warning=F, message=F}
-# first create 10 bins
-hf_tot$HFbin <- ntile(hf_tot$totdist_km2, n=10) 
-
-veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
-
-  veg_hf %>% 
-    group_by(HFbin,Species) %>% summarize(occ_freq=sum(PA)) %>% 
-    arrange(Species,desc(occ_freq)) %>% 
-    filter(Species=="Typha latifolia") %>% 
-    ggplot(aes(x=HFbin,y=occ_freq)) + 
-    ggtitle("Typha latifolia") +
-    geom_bar(stat="identity")
+```{r}
+  # first create 10 bins
+  hf_tot$HFbin <- ntile(hf_tot$totdist_percent, n=10) 
+  
+  veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
 
   # calc occurrence freq of each sp in each bin
   occfreq_HFbin <- veg_hf %>% 
@@ -205,9 +194,9 @@ For sites sampled with the wetland protocol, there appears to be a more directio
 
 ```{r echo=F, message=F, warning=F}
 # relationship between veg community specialization and HF
-ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=Protocol)) +
+ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
   ggtitle("Protocol") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   facet_wrap(~Protocol) +
@@ -223,9 +212,9 @@ No single wetland class appears to have particularly high or low sensitivity ove
 ```{r echo=F, message=F, warning=F}
 head(veg_CSI_HF)
 # relationship between veg community specialization and HF
-ggplot(veg_CSI_HF, aes(x=totdist_km2,y=CSI, color=WetlandType)) +
+ggplot(veg_CSI_HF, aes(x=totdist_percent,y=CSI, color=WetlandType)) +
   ggtitle("Wetland Class") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   theme_classic() +
@@ -239,9 +228,9 @@ Wetlands across the natural regions vary somewhat in their exposure to human dev
 Rocky mountain wetlands have high sensitivty at low development intensities. Grassland wetlands maybe have higher overall sensitivity to human devleopment than wetlands in the other NRs.
 
 ```{r echo=F, message=F, warning=F}
-ggplot(veg_CSI_HF,aes(x=totdist_km2,y=CSI, color=NRNAME)) +
+ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
   ggtitle("Natural Region") +
-  labs(x="Total Human Development (km2)", y="CSI to human develpoment") +
+  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
   geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
   theme_classic() +
@@ -258,8 +247,8 @@ Species richness is somewhat elevated at intermediate human development intensit
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   
-  ggplot(spR, aes(x=totdist_km2, y=rich)) +
-    labs(x="Total Human Development (km2)", y="Species Richness") +
+  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
     theme_classic()
@@ -269,7 +258,7 @@ Species richness is somewhat elevated at intermediate human development intensit
 
 Now we can examine whether CSI to disturbance is mediated by mean climatic conditions. First check to ensure that HF isn't correlated with climatic conditions: it definitely is not.
 
-```{r echo=F, warning=F, message=F}
+```{r}
   # load ABMI climate data
   # clim vars - extracted from ABMI data; locations inaccurate
   {
@@ -297,7 +286,7 @@ Now we can examine whether CSI to disturbance is mediated by mean climatic condi
 
   left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
     gather(key="ClimVar", value=Value, 9:ncol(.)) %>% 
-    ggplot(aes(x=totdist_km2, y=Value, color=ClimVar)) +
+    ggplot(aes(x=totdist_percent, y=Value, color=ClimVar)) +
     geom_point(alpha=0.5) +
     facet_wrap(~ClimVar, scales="free_y") +
     # geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
@@ -361,7 +350,7 @@ library(rpart); library(rpart.plot)
 predvars <- left_join(veg_CSI_HF, clim2, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year")) 
 
 # add species richness data
-predvars <- inner_join(predvars, spR, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year", "totdist_km2")) %>% distinct()
+predvars <- inner_join(predvars, spR, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year", "totdist_percent")) %>% distinct()
 
 
 # convert factors to factor (from character)
