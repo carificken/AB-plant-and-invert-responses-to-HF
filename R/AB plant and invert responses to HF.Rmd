@@ -3,9 +3,9 @@ title: "AB plant and invert responses to HF"
 author: "Cari D. Ficken"
 date: "`r Sys.Date()`"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -14,6 +14,7 @@ library(tidyverse)
 library(vegan)
 library(ggrepel)
 library(cowplot)
+library(lme4)
 ```
 
 The goal of this project is to compare and contrast the responses of plants and invertebrates to environmental gradients. It uses the following data:
@@ -183,16 +184,46 @@ Add SSI of each species (`sp_SSI`) to the vegetation df (`veg_pa`). Calculate th
 
 
 # 5. Examine patterns of CSI across different wetland/site classifications gradients
-### 5.1 Comparisons between Terrestrial and Wetland Protocols
+
+### 5.1 Overall patterns
+
+Random effects models (linear, 2nd order polynomial, 3rd order polynomial) show no effect of including a Protocol x Site unique ID random effect. Linear models find that the quadratic model describes CSI better than the linear model.
+
+```{r overall realtionship}
+# relationship between veg community specialization and HF
+  m.linear <- lm(CSI ~ totdist_percent, data=veg_CSI_HF)
+  # summary(m.linear)
+  m.poly <- lm(CSI ~ poly(totdist_percent,2), data=veg_CSI_HF)
+  # summary(m.poly)
+  # AIC(m.linear, m.poly)
+  
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI)) +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color="blue") +
+    geom_smooth(method="lm", se=F, linetype="dashed", color="red") +
+    annotate(geom="text", x=0, y=2, 
+             label="Poly: R2 = 0.28, AIC = -2408, p < 0.001", color="blue", size=5, hjust=0) +
+    annotate(geom="text", x=0, y=1.9, 
+             label="Linear: R2 = 0.24, AIC = -2301, p < 0.001", color="red", size=5, hjust=0) +
+    theme_classic() +
+    theme(legend.position = "none")
+```
+
+### 5.2 Comparisons between Terrestrial and Wetland Protocols
 
 Compare the distribution of CSI values for sites sampled with wetland vs terrestrial ABMI protocols.
 
-The Wetland protocol underestimates the CSI of communities at high development levels. Generally, though, communities show the highest sensitivity to development at really high development intensities. This may be because communities at high develpoment levels are composed of ruderal species that are only found under these disturbed conditions; at low development intensitities, perhaps communities are composed of more broadly distributed native species. That is, after ~0.05 km2 of development, ruderals take over.
+The Wetland protocol underestimates the CSI of communities at high development levels. Generally, though, communities show the highest sensitivity to development at really high development intensities. This may be because communities at high develpoment levels are composed of ruderal species that are only found under these disturbed conditions; at low development intensitities, perhaps communities are composed of more broadly distributed native species. That is, after 25% area is development, ruderals take over.
 
-For sites sampled with the wetland protocol, there appears to be a more directional (positive) trend.  
+The variance explained by including Protocol as a random effect was again indistinguishable from zero. However, Protocol was a significant predictor in quadratic models, and including it as an interaction term significantly improved model fit (R2=0.35; AIC=-2614) compared to models without Protocol. 
 
+```{r}
 
-```{r echo=F, message=F, warning=F}
+m.poly.protocol <- lm(CSI ~ poly(totdist_percent,2)*Protocol,data=veg_CSI_HF)
+summary(m.poly.protocol)
+AIC(m.poly, m.poly.protocol)
+  
 # relationship between veg community specialization and HF
 ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
   ggtitle("Protocol") +
@@ -204,13 +235,12 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
   theme(legend.position = "none")
 ```
 
-### 5.2 Comparisons among wetland classes
+### 5.3 Comparisons among wetland classes
 Patterns across wetland classes are difficult to disentangle due to vastly different sample sizes of each wetland class. Marshes, shallow lakes, and wet meadows have the most thorough representation across the full HF gradient. For these classes, there is slightly high sensitivity to development at both ends of the development spectrum. This largely parallels the pattern observed across the full dataset. For other wetland classes, sites are not distributed across the gradient sufficiently to really commpare their sensitivity.
 
 No single wetland class appears to have particularly high or low sensitivity overall. 
 
 ```{r echo=F, message=F, warning=F}
-head(veg_CSI_HF)
 # relationship between veg community specialization and HF
 ggplot(veg_CSI_HF, aes(x=totdist_percent,y=CSI, color=WetlandType)) +
   ggtitle("Wetland Class") +
@@ -222,7 +252,7 @@ ggplot(veg_CSI_HF, aes(x=totdist_percent,y=CSI, color=WetlandType)) +
   theme(legend.position = "none")
 ```
 
-### 5.3 Comparisons among natural regions
+### 5.4 Comparisons among natural regions
 Wetlands across the natural regions vary somewhat in their exposure to human development. For example, there is essentially no development in the Canadian shield and very little in the rocky mountain NR Sites in the boreal, foothills, grassland, and parkland NRs show a greater range in human development.
 
 Rocky mountain wetlands have high sensitivty at low development intensities. Grassland wetlands maybe have higher overall sensitivity to human devleopment than wetlands in the other NRs.
@@ -243,15 +273,29 @@ Channeling the Intermediate Disturbance Hypothesis here...
 
 Species richness is somewhat elevated at intermediate human development intensitities. This supports the findings of Mayor et al 2012 (_Regional boreal biodiversity peaks at intermediate human disturbance_) which uses ABMI data to examine this pattern only in the boreal.
 
+Variance explained by including unique site ID (i.e. Protocol x Site) as a random effect is greater than zero, indicating this is an important variable to keep. Including Protocol also as a direct effect improves model fit somewhat (AIC w/ Protocol = 16652; AIC w/o Protocol = 16978) you also have an increase in dfs (5 vs 8). 
+
 ```{r echo=F, message=F, warning=F}
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+  
+  m.poly.raneff.rich <- lmer(rich ~ poly(totdist_percent,2) + 
+                          (1|paste(spR$Protocol, spR$Site, sep="_")), 
+                        data=spR,
+                        REML = F)
+  m.poly.raneff.rich.protocol <- 
+    lmer(rich ~ poly(totdist_percent,2)*Protocol + 
+           (1|paste(spR$Protocol, spR$Site, sep="_")), 
+                             data=spR,
+                             REML = F)
+  AIC(m.poly.raneff.rich, m.poly.raneff.rich.protocol)
   
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    theme_classic()
+    theme_classic() +
+    facet_wrap(~Protocol)
 ```
 
 # 7. Examine patterns of CSI to HF across climatic gradients
@@ -332,6 +376,88 @@ plot_grid(cmd, ffp, map, mat, summer_precip, nrow=3, ncol=2)
 
 ```
 
+
+# 9. Ordination of communities at high and low end of HF gradient
+
+Communities at low and high end of HF gradient show similar plant diversity (richness), but are these communities compositionally different? Yes, MRPP test shows significant difference between these groups and the ordination visualizes this. 
+
+Species most strongly associated with sites in the low HF bin (bin 1):
+
+* _Rhodondendron tomentosum_: marsh labrador tea
+* _Eriophorum scheuchzeri_: white cotton grass
+* _Carex oligosperma_: fewseed sedge
+* _Drosera anglica_: English sundew
+* _Scheuchzeria palustris: Rannoch-rush
+
+Species most strongly associated with sites in the highest HF bin (bin 10):
+
+* _Euphorbia serpyllifolia_: thymeleaf sandmat
+* _Avena sativa_: common oat
+* _Polygonum ramosissimum_: bushy knotweed
+* _Potentilla supina_: bushy cinquefoil
+* _Bromus commutatus_: meadow brome or hairy chess
+
+```{r results='hide'}
+library(ggrepel)
+
+# ordinations of the highest and lowest disturbed sites
+veg_hf2 <- veg_hf %>% 
+  select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+veg_hf2 <- veg_hf2 %>% 
+  spread(key=Species, value=PA) %>% 
+  gather(key=Species, value=PA, 6:ncol(.)) %>% 
+  replace_na(list(PA=0)) %>% 
+  spread(key=Species, value=PA) 
+
+veg_hf2 <- left_join(veg_hf2, select(hf_tot, -totdist_percent), by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+veg_hf2 <- veg_hf2 %>% filter(HFbin==1 | HFbin==10) %>% select(NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+
+# distance matrix
+veg_d <- vegdist(veg_hf2[,7:ncol(veg_hf2)], method="jaccard", binary=T)
+
+veg.nmds4 <- metaMDS(veg_hf2[,7:ncol(veg_hf2)], distance="jaccard", binary=T, k=4,trymax=100)
+```
+
+```{r}
+# check for sig diffs among groups
+mrpp(veg_d, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
+
+# extract site scores and convert to df
+veg.scores <- data.frame(scores(veg.nmds4, "sites"))
+# add in protocol, site, year, 
+veg.scores$Protocol <- as.factor(veg_hf2$Protocol)
+veg.scores$Site <- veg_hf2$Site
+veg.scores$Year <- veg_hf2$Year
+veg.scores$NRNAME <- veg_hf2$NRNAME
+veg.scores$HFbin <- veg_hf2$HFbin
+
+spscores <- data.frame(scores(veg.nmds4, display="species"))
+
+spscores$Species <- rownames(spscores)
+
+impsp_5 <- bind_rows(top_n(spscores, 5, wt=NMDS1),
+                     top_n(spscores, -5, wt=NMDS1))
+
+spdriversp <- ggplot(data=impsp_5) +
+  geom_point(data=veg.scores, 
+             aes(x=NMDS1, y=NMDS2, 
+                 color=as.factor(HFbin), 
+                 shape=as.factor(HFbin)),
+             size=3) +
+  stat_ellipse(data=veg.scores, 
+               aes(x=NMDS1, y=NMDS2, 
+                   color=as.factor(HFbin))) +
+  scale_color_brewer(palette = "Dark2", name="HF Bin") +
+  scale_shape_manual(values=c(15,16), name="HF Bin") +
+  geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+               color=1,
+               arrow=arrow(length=unit(0.3, "cm"))) +
+  geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+                   box.padding=1, size=3.5) +
+  theme(legend.position="top")
+spdriversp
+```
+
 # 8. Choosing the most predictive variables
 How can we chose the most appropriate variablesl to describe community sensitivty? Use regression trees and/or random forest. To predict the community sensitivity index (CSI), use the following predictors
 
@@ -343,7 +469,7 @@ How can we chose the most appropriate variablesl to describe community sensitivt
 
 Regression tree predicting CSI - MAT
 
-```{r echo=F, message=F, warning=F}
+```{r}
 library(rpart); library(rpart.plot)
 
 # add climate data
@@ -386,6 +512,7 @@ importance(fit) # importance of each predictor
 mean(fit$rsq)
 ```
 The final tree's pseudo-R^2^ = `r round(mean(fit$rsq), 2)`.
+
 
 
 

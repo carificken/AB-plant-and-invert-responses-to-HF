@@ -1,5 +1,6 @@
 rm(list=ls())
-library(tidyverse); library(cowplot)
+library(tidyverse); library(cowplot); library(ggrepel)
+library(lme4)
 
 # load plant data
 veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
@@ -168,7 +169,47 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
     geom_histogram(bins=30) 
 
 # relationship between veg community specialization and HF
-ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
+  m.linear.raneff <- lmer(CSI ~ totdist_percent + 
+                            (1|paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")), 
+             data=veg_CSI_HF,
+             REML = F)
+  m.poly.raneff <- lmer(CSI ~ poly(totdist_percent,2) + 
+                            (1|paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")), 
+                          data=veg_CSI_HF,
+                          REML = F)
+  summary(m.linear.raneff) # variance on group RE indistinguishable from zero
+  summary(m.poly.raneff) # variance on group RE indistinguishable from zero
+  
+  m.linear <- lm(CSI ~ totdist_percent, data=veg_CSI_HF)
+  summary(m.linear)
+  m.poly <- lm(CSI ~ poly(totdist_percent,2), data=veg_CSI_HF)
+  summary(m.poly)
+  m.poly3 <- lm(CSI ~ poly(totdist_percent,3), data=veg_CSI_HF)
+  summary(m.poly3)
+  AIC(m.linear, m.poly, m.poly3)
+  
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI)) +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color="blue") +
+    geom_smooth(method="lm", se=F, linetype="dashed", color="red") +
+    annotate(geom="text", x=0, y=2, label="Poly: R2 = 0.28, AIC = -2408, p < 0.001", color="blue", size=5, hjust=0) +
+    annotate(geom="text", x=0, y=1.9, label="Linear: R2 = 0.24, AIC = -2301, p < 0.001", color="red", size=5, hjust=0) +
+    theme_classic() +
+    theme(legend.position = "none")
+  
+  m.poly.raneff.protocol <- lmer(CSI ~ poly(totdist_percent,2) + 
+                            (1|Protocol), 
+                          data=veg_CSI_HF,
+                          REML = F)
+  summary(m.poly.raneff.protocol) # again RE is indistinguishable from 0
+  
+  m.poly.protocol <- lm(CSI ~ poly(totdist_percent,2)*Protocol, data=veg_CSI_HF)
+  m.poly.protocol2 <- lm(CSI ~ poly(totdist_percent,2)+Protocol, data=veg_CSI_HF)
+  summary(m.poly.protocol)
+  AIC(m.poly, m.poly.protocol, m.poly.protocol2)
+
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
   ggtitle("Protocol") +
   labs(x="Total Human Development (%)", y="CSI to human develpoment") +
   geom_point(alpha=0.5) + 
@@ -202,10 +243,30 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   
+  m.linear.raneff.rich <- lmer(rich ~ totdist_percent + 
+                            (1|paste(spR$Protocol, spR$Site, sep="_")), 
+                          data=spR,
+                          REML = F)
+  m.poly.raneff.rich <- lmer(rich ~ poly(totdist_percent,2) + 
+                          (1|paste(spR$Protocol, spR$Site, sep="_")), 
+                        data=spR,
+                        REML = F)
+  summary(m.linear.raneff.rich) # RE of unique site ID should be kept
+  summary(m.poly.raneff.rich) # RE of unique site ID should be kept
+  AIC(m.linear.raneff.rich, m.poly.raneff.rich) # poly model is better
+  
+  # do we need to inclue Protocol as a main effect?
+  m.poly.raneff.rich.protocol <- lmer(rich ~ poly(totdist_percent,2)*Protocol + 
+                               (1|paste(spR$Protocol, spR$Site, sep="_")), 
+                             data=spR,
+                             REML = F)
+  AIC(m.poly.raneff.rich, m.poly.raneff.rich.protocol)
+  
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    facet_wrap(~Protocol) +
     theme_classic()
 }
 
@@ -253,36 +314,47 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
     theme(legend.position = "none")
   
   cmd <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
-      ggplot(aes(x=climatic_moisture_defecit, y=CSI)) +
-      geom_point(alpha=0.5) + 
-      geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-      theme_classic() 
+      ggplot(aes(x=climatic_moisture_defecit, y=CSI, color=Protocol)) +
+    geom_point(alpha=0.5, size=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+      theme_classic() + 
+    theme(legend.position = "top")
 
   ffp <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
-    ggplot(aes(x=FFP, y=CSI)) +
-    geom_point(alpha=0.5) + 
+    ggplot(aes(x=FFP, y=CSI, color=Protocol)) +
+    geom_point(alpha=0.5, size=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    theme_classic() 
+    theme_classic() +
+    theme(legend.position = "none")
   
   map <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year"))%>% 
-    ggplot(aes(x=MAP, y=CSI)) +
-    geom_point(alpha=0.5) + 
+    ggplot(aes(x=MAP, y=CSI, color=Protocol)) +
+    geom_point(alpha=0.5, size=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    theme_classic() 
+    theme_classic() +
+    theme(legend.position = "none")
   
   mat <- left_join(veg_CSI_HF, clim2,by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
-    ggplot(aes(x=MAT, y=CSI)) +
-    geom_point(alpha=0.5) + 
+    ggplot(aes(x=MAT, y=CSI, color=Protocol)) +
+    geom_point(alpha=0.5, size=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    theme_classic() 
+    theme_classic() +
+    theme(legend.position = "none")
   
   summer_precip <- left_join(veg_CSI_HF, clim2, by=c("NRNAME","WetlandType", "Protocol", "Site", "Year")) %>% 
-    ggplot(aes(x=summer_precip, y=CSI)) +
-    geom_point(alpha=0.5) + 
+    ggplot(aes(x=summer_precip, y=CSI, color=Protocol)) +
+    geom_point(alpha=0.5, size=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    theme_classic() 
+    theme_classic() +
+    theme(legend.position = "none")
   
-  plot_grid(cmd, ffp, map, mat, summer_precip, nrow=3, ncol=2)
+  myleg <- get_legend(cmd)
+  
+  climp <- plot_grid(cmd + theme(legend.position = "none"), 
+            ffp, map, mat, summer_precip, nrow=3, ncol=2)
+  plot_grid(myleg, climp,
+            nrow=2, ncol=1,
+            rel_heights = c(0.2,2))
 
 }
 
@@ -440,7 +512,7 @@ spscores$Species <- rownames(spscores)
 impsp_5 <- bind_rows(top_n(spscores, 5, wt=NMDS1),
                      top_n(spscores, -5, wt=NMDS1))
 
-ggplot(data=impsp_5) +
+spdriversp <- ggplot(data=impsp_5) +
   geom_point(data=veg.scores, 
              aes(x=NMDS1, y=NMDS2, 
                  color=as.factor(HFbin), 
@@ -458,4 +530,9 @@ ggplot(data=impsp_5) +
                    box.padding=1, size=3.5) +
   theme(legend.position="top")
 
+ggsave(plot=spdriversp, 
+       filename="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Ordination of HF bin 1 vs 10.jpeg",
+       height=18,
+       width=18,
+       units="cm")
 spdriversp
