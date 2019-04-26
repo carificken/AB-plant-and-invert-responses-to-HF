@@ -1,5 +1,5 @@
 #Whole Alberta, SSI and CSI analyses - HF gradient - Plants####
-#v1.0
+#v1.1
 
 #Load package and functions
 f <- function(x)length(unique(x))
@@ -16,6 +16,9 @@ veg_alberta[veg_alberta$Protocol == "Wetland",]$WSite <- gsub("WOG","OGW",paste0
 
 #Create the unique ID = Protocol + Year + Site (Protocol is include in WSite column with the "W")
 veg_alberta$ID <- paste(veg_alberta$WSite, veg_alberta$Year, sep = "_")
+
+#Load exotic species status data
+exotic_plants_ab <- read.csv("data/invasive_plants/exotic_plants_ab.csv", sep = ";")
 
 #Load HF data
 HF_alberta <- read.csv("data/landscape/Alberta_HF.csv", stringsAsFactors = F)
@@ -110,7 +113,7 @@ for(i in 1:100){
   
 }
 rm(data_ssi_calc, freq_cat, results)
-#Warnings just due to the last merging, i.e. automatic renaming colums
+#Warnings just due to the last merge, i.e. automatic renaming colums
 
 #Example of the HF gradient from a particular random dataset
 hist(data_ssi_random[[1]][!duplicated(data_ssi_random[[1]]$ID),]$HF,
@@ -163,19 +166,52 @@ for(x in unique(data_ssi$ID)){
 }
 
 #Calculate proportion of exotic species in each community
-data_ssi <- merge(data_ssi,invasive_plants_ab, by.x = "SCIENTIFIC_NAME", by.y = "SPECIES")
+exotic_plants_ab <- exotic_plants_ab[exotic_plants_ab$SPECIES %in% ssi_HF$SCIENTIFIC_NAME,] #remove the species deleted because of high SSI values
+data_ssi <- merge(data_ssi, exotic_plants_ab, by.x = "SCIENTIFIC_NAME", by.y = "SPECIES")
 
-d <- data.frame(ID = names(tapply(data_ssi$ORIGIN,data_ssi$ID,function(x)100*table(x)["Exotic"]/sum(table(x)))),
-                invasive_prop = tapply(data_ssi$ORIGIN,data_ssi$ID,function(x)100*table(x)["Exotic"]/sum(table(x))))
+exotic_prop <- data.frame(ID = names(tapply(data_ssi$ORIGIN,data_ssi$ID,function(x)100*table(x)["Exotic"]/sum(table(x)))),
+                          exotic_prop = tapply(data_ssi$ORIGIN,data_ssi$ID,function(x)100*table(x)["Exotic"]/sum(table(x))))
 
 #Plot CSI values ~ HF disturbance gradient:
 dplot <- cbind(CSI, predict(lm(CSI ~ HF + I(HF^2), data = CSI), interval = 'confidence'))
-dplot <- merge(dplot, d, by = "ID")
+dplot <- merge(dplot, exotic_prop, by = "ID")
 
-scatter_plot <- ggplot(dplot, aes(HF,CSI)) + xlab("Human Footprint gradient")
-scatter_plot <- scatter_plot + geom_point(aes(colour = invasive_prop))
+scatter_plot <- ggplot(dplot, aes(HF, CSI)) + xlab("Human Footprint gradient")
+scatter_plot <- scatter_plot + geom_point(aes(colour = exotic_prop))
 scatter_plot <- scatter_plot + geom_line(aes(HF, fit), col = "red")
-scatter_plot <- scatter_plot + geom_ribbon(aes(ymin=lwr,ymax=upr), fill = "blue", alpha = 0.3)
+scatter_plot <- scatter_plot + geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "blue", alpha = 0.3)
 scatter_plot <- scatter_plot + scale_colour_gradient(name = "% of exotic species",
                                                      low = "#ffffb2", high = "#bd0026")
 scatter_plot
+
+#Linear models analyses
+dmod <- merge(CSI, exotic_prop, by = "ID")
+
+lin_mod <- lm(CSI ~ HF, data = dmod)
+summary(lin_mod)
+Anova(lin_mod)
+
+quad_mod <- lm(CSI ~ HF + I(HF^2), data = dmod)
+summary(quad_mod)
+Anova(quad_mod)
+
+inter_mod <- lm(CSI ~ HF + I(HF^2) + HF*exotic_prop, data = dmod)
+summary(inter_mod)
+Anova(inter_mod)
+vif(inter_mod)
+
+only_inter_mod <- lm(CSI ~ HF*exotic_prop, data = dmod)
+summary(only_inter_mod)
+Anova(only_inter_mod)
+vif(only_inter_mod)
+
+AIC(lin_mod, quad_mod, inter_mod, only_inter_mod)
+
+#Plot CSI values ~ Species richness of communities
+dplot <- data.frame(ID = names(tapply(data_ssi$SCIENTIFIC_NAME, data_ssi$ID,f)),
+                    SR = tapply(data_ssi$SCIENTIFIC_NAME, data_ssi$ID,f))
+dplot <- merge(dplot, CSI)
+scatter_plot <- ggplot(dplot, aes(SR,CSI)) + xlab("SR")
+scatter_plot <- scatter_plot + geom_point() + geom_hline(yintercept= mean(dplot$CSI), color = "red")
+scatter_plot
+
