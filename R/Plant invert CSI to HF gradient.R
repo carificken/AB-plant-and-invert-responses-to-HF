@@ -2,21 +2,22 @@ rm(list=ls())
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
 
-# load plant data
+# load plant data ####
 veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
 veg_pa %>% distinct(Protocol, Site, Year) %>% nrow()
 
-# load HF data 
+# load HF data ####
 hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") 
 hf %>% distinct(Protocol, Site, Year) %>% nrow()
 
-# summary of site breakdown
+# summary of site breakdown ####
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(Protocol) %>% tally()
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(WetlandType) %>% tally()
 veg_pa %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
 
 
-# compute total dist of each HF Cat - this doesn't make much sense b/c we are summing percents
+# compute total dist of each HF Cat ####
+# this doesn't make much sense b/c we are summing percents
 head(hf)
 ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
   summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
@@ -50,7 +51,7 @@ hfcats <- cowplot::plot_grid(myleg,
 hfcats
 
 
-# calculate total disturbance
+# calculate total disturbance ####
 hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
 ggplot(hf_tot, aes(x=totdist_percent)) + 
   geom_histogram(fill="grey80", color="black") + 
@@ -60,7 +61,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   theme(legend.position = "none")
 
 
-# calculate SSI for each speceis
+# calculate SSI for each speceis ####
 {
   # first create 10 bins
   hf_tot$HFbin <- ntile(hf_tot$totdist_percent, n=10) 
@@ -117,7 +118,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   
 }
 
-# explore SSI of each species
+# explore SSI of each species ####
 {
   # distribution of CV for each species
   ggplot(sp_SSI, aes(x=CV)) + geom_histogram(bins=50)
@@ -150,7 +151,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
     geom_point() 
 }
 
-# calculate CSI : mean CV of each community (also compare the summed CV of each community)
+# calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
 {
   veg_CSI_HF <- left_join(veg_pa, sp_SSI)
   head(veg_CSI_HF)
@@ -162,7 +163,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
 }
 
 
-# plotting relatinoships bw CSI and HF gradient
+# plotting relatinoships bw CSI and HF gradient ####
 # distribution of site-level CSI
 {
   ggplot(veg_CSI_HF, aes(x=CSI)) +
@@ -237,7 +238,7 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
   theme(legend.position = "none")
 }
 
-# compare sp richness across HF gradient (intermediate disturbance hypothesis)
+# compare sp richness across HF gradient (intermediate disturbance hypothesis) ####
 {
   head(veg_pa)
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
@@ -268,7 +269,93 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
     geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
     facet_wrap(~Protocol) +
     theme_classic()
+  
+  head(spR)
+  summary(lm(rich~poly(totdist_percent, 2)*Protocol, data=spR))
 }
+
+
+# exotic species ####
+exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
+head(exotics)
+head(veg_hf)
+
+hf_exot <- left_join(veg_hf, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
+head(hf_exot)
+hf_exot <- hf_exot %>% 
+  group_by(Protocol, Site,Year,totdist_percent, ORIGIN) %>% 
+  tally() %>% 
+  spread(key=ORIGIN, value=n) %>% 
+  replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
+  rowwise() %>% 
+  mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
+         propexotic=100*(Exotic/rich))
+
+hf_exot <- left_join(veg_CSI_HF, 
+                     hf_exot, 
+                     by=c("Protocol", "Site", "Year", "totdist_percent")) %>% 
+  select(-Exotic, -Native, -`Unknown/Undetermined`)
+
+head(hf_exot)
+
+p1 <- ggplot(hf_exot, aes(x=rich, propexotic)) +
+  geom_point(alpha=0.5) +
+  labs(x="Sp. Rich.", y="Exotic Sp. (%)")
+p2 <- ggplot(hf_exot, aes(x=totdist_percent, propexotic)) +
+  geom_point(alpha=0.5) +
+  labs(x="Total Development (%)", y="Exotic Sp. (%)")
+p3 <- ggplot(hf_exot, aes(x=CSI, propexotic)) +
+  geom_point(alpha=0.5) +
+  labs(y="Exotic Sp. (%)")
+plot_grid(p1,p2,p3, nrow=1,ncol=3, labels="auto")
+
+p4 <- ggplot(hf_exot, aes(x=totdist_percent, y=rich)) +
+  geom_point(alpha=0.5, aes(color=propexotic)) +
+  geom_smooth(method="lm", formula=y~poly(x,2), color=1, se=F) + 
+  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+  labs(x="Total Development (%)", y="Sp. Rich.") +
+  annotate(geom="text", x=0, y=110, 
+           label="Rich ~ poly(totdist_percent,2) + propexotic: \n R2 = 0.07 p<0.001", 
+           size=5, hjust=0) +
+  theme(legend.position = "top") 
+  
+m1 <- lm(rich ~ poly(totdist_percent,2) * propexotic, data=hf_exot)
+m2 <- lm(rich ~ poly(totdist_percent,2) + propexotic, data=hf_exot)
+m3 <- lm(rich ~ propexotic, data=hf_exot)
+m4 <- lm(rich ~ poly(totdist_percent,2) , data=hf_exot)
+AIC(m1,m2,m3,m4)
+summary(m2)
+
+p5 <- ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
+  geom_point(alpha=0.5, aes(color=propexotic)) +
+  geom_smooth(method="lm", formula=y~poly(x,2), color=1, se=F) + 
+  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+  labs(x="Total Development (%)") +
+  annotate(geom="text", x=0, y=1.8, 
+           label="CSI ~ poly(totdist_percent,2) * propexotic + rich: \n R2 = 0.66 p<0.001", 
+          size=5, hjust=0) +
+  theme(legend.position = "top")
+
+m5 <- lm(CSI ~ poly(totdist_percent,2) * propexotic * rich, data=hf_exot)
+m6 <- lm(CSI ~ poly(totdist_percent,2) * propexotic + rich, data=hf_exot)
+m6a <- lm(CSI ~ poly(totdist_percent,2) * propexotic, data=hf_exot)
+m7 <- lm(CSI ~ propexotic, data=hf_exot)
+
+m8 <- lm(CSI ~ poly(totdist_percent,2) , data=hf_exot)
+m9 <- lm(CSI ~ rich , data=hf_exot)
+
+AIC(m5,m6,m6a, m7)
+summary(m6)
+
+
+myleg <- get_legend(p4)
+tmpp <- plot_grid(p4 + theme(legend.position="none"),
+          p5 + theme(legend.position="none"), 
+          nrow=2,ncol=1, labels="auto")
+tmpp <- plot_grid(myleg, tmpp, nrow=2, ncol=1, rel_heights = c(0.2,1))
+tmpp
+
+
 
 
 # now compare how plant comm sensitivity to HF varies across clim gradients

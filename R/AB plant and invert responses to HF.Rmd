@@ -179,7 +179,6 @@ Add SSI of each species (`sp_SSI`) to the vegetation df (`veg_pa`). Calculate th
 
   ggplot(veg_CSI_HF, aes(x=CSI)) +
     geom_histogram(bins=30) 
-
 ```
 
 
@@ -275,7 +274,7 @@ Species richness is somewhat elevated at intermediate human development intensit
 
 Variance explained by including unique site ID (i.e. Protocol x Site) as a random effect is greater than zero, indicating this is an important variable to keep. Including Protocol also as a direct effect improves model fit somewhat (AIC w/ Protocol = 16652; AIC w/o Protocol = 16978) you also have an increase in dfs (5 vs 8). 
 
-```{r echo=F, message=F, warning=F}
+```{r}
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   
