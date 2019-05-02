@@ -45,13 +45,16 @@ hist(data_ssi[!duplicated(data_ssi$ID),]$HF,
 #Plot SR~HF gradient
 dplot <- data.frame(ID = names(tapply(data_ssi$SCIENTIFIC_NAME, data_ssi$ID,f)),
                     SR = tapply(data_ssi$SCIENTIFIC_NAME, data_ssi$ID,f),
-                    HF = tapply(data_ssi$HF, data_ssi$ID,unique))
+                    HF = tapply(data_ssi$HF, data_ssi$ID, unique),
+                    Protocol = tapply(data_ssi$Protocol, data_ssi$ID, unique))
 dplot <- cbind(dplot, predict(lm(SR ~ HF + I(HF^2), data = dplot), interval = 'confidence'))
 
 scatter_plot <- ggplot(dplot, aes(HF, SR)) + xlab("Human Footprint gradient")
-scatter_plot <- scatter_plot + geom_point(col = "grey")
-scatter_plot <- scatter_plot + geom_line(aes(HF, fit), col = "red")
-scatter_plot <- scatter_plot + geom_ribbon(aes(ymin=lwr,ymax=upr), fill = "blue", alpha = 0.3)
+scatter_plot <- scatter_plot + geom_point(aes(colour = Protocol))
+scatter_plot <- scatter_plot + geom_line(aes(HF, fit), col = "black", size = 1)
+scatter_plot <- scatter_plot + geom_ribbon(aes(ymin=lwr,ymax=upr), fill = "grey", alpha = 0.5)
+scatter_plot <- scatter_plot + theme(legend.key = element_rect(colour = NA, fill = NA),
+                                     legend.box.background = element_blank())
 scatter_plot
 
 #Randomly split the dataset in different even categories (10 bins with same number of IDs) based on the HF gradient
