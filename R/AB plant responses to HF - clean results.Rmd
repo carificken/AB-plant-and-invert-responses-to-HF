@@ -1,0 +1,328 @@
+---
+title: "AB plant respones to HF"
+author: "Cari D. Ficken"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message=F, warning=F)
+library(tidyverse) 
+library(vegan)
+library(ggrepel)
+library(cowplot)
+library(lme4)
+```
+
+The goal of this project is to examine how wetland plant communities repond to disturbance. 
+
+# 1. Load data; calculate CSI
+
+Loading vegetation data (presence/absence) and HF data (% total human development in each plot). Calculate a species specialization index and community specialization index based on the variability in species cumulative occurrences across the binned HF gradient. Species specialization index (SSI) is based on the coefficient of variation of each species' cumulative occurrence in each disturbance bin; communitity specialization index (CSI) is the mean SSI of species present at each site.
+
+```{r load data}
+# load veg data
+veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
+# load HF data 
+hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") 
+hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
+```
+
+```{r calc SSI}
+  # first create 10 bins
+  hf_tot$HFbin <- ntile(hf_tot$totdist_percent, n=10) 
+  
+  veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
+
+  # calc occurrence freq of each sp in each bin
+  occfreq_HFbin <- veg_hf %>% 
+      group_by(HFbin,Species) %>% 
+      summarize(occ_freq=sum(PA))
+  
+  # exclude species which occur only 1x - they will have high sensitivity
+  occfreq_HFbin <- occfreq_HFbin %>% 
+    arrange(Species) %>% 
+    group_by(Species) %>% 
+    mutate(cum_occ_freq = sum(occ_freq)) %>% 
+    filter(cum_occ_freq>1) %>% 
+    select(-cum_occ_freq)
+  
+  # expand the bin categories so each species has an occ freq value for every bin #1:10
+  occfreq_HFbin <- occfreq_HFbin %>% 
+    spread(key=HFbin, value=occ_freq) %>% 
+    gather(key=HFbin, value=occ_freq, 2:ncol(.)) %>% 
+    mutate(occ_freq=replace_na(occ_freq,0))
+  
+  # now calculate species sensitivitiy index (=CV) for each species across the gradient of HF bins
+  sp_SSI <- occfreq_HFbin %>% 
+    group_by(Species) %>%
+    summarize(CV=sd(occ_freq)/mean(occ_freq))
+```
+
+```{r calc CSI}
+  veg_CSI_HF <- left_join(veg_pa, sp_SSI)
+  veg_CSI_HF <- veg_CSI_HF %>% 
+    group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
+    summarize(CSI=mean(CV, na.rm = T)) # 32 sites have na value for at least 1 sp
+  
+  veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year")) 
+```
+
+# 2. How does sp richness vary across disturbance gradient?
+
+Species richrichess peaks at intermediate disturbance levels. 
+
+Protocol (i.e. wetland vs terrestrial) is a significant predictor of species richness; we include protocol as a fixed effect in all models. In the figure below we plot the relationships for each protocol seperately in lighter dashed lines, and the pooled relationship in a thick solid line. To account for sites sampled 2x, we also include site ID as a random effect in all models, regardless of whether it was significant.
+
+```{r richness vs dist}
+  spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
+  spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+  spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
+
+  rich.linear <- lmer(rich ~ totdist_percent + Protocol +
+                            (1|UniqueID), 
+                          data=spR, REML=F)
+  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+                          (1|UniqueID), 
+                        data=spR, REML=F)
+  # AIC(rich.linear, rich.poly)
+  # anova(rich.linear, rich.poly)
+  piecewiseSEM::rsquared(rich.poly)
+  
+  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+```
+
+# 3. How do communities differ across disturbance gradient?
+
+### 3.1 The most- and least-disturbed communities differ in community composition
+Communities at low and high end of HF gradient show similar plant diversity (richness), but are these communities compositionally different? Yes, MRPP test shows significant difference between these groups and the ordination visualizes this. 
+
+Species most strongly associated with sites in the low HF bin (bin 1):
+
+* _Rhodondendron tomentosum_: marsh labrador tea
+* _Eriophorum scheuchzeri_: white cotton grass
+* _Carex oligosperma_: fewseed sedge
+* _Drosera anglica_: English sundew
+* _Scheuchzeria palustris: Rannoch-rush
+
+Species most strongly associated with sites in the highest HF bin (bin 10):
+
+* _Euphorbia serpyllifolia_: thymeleaf sandmat
+* _Avena sativa_: common oat
+* _Polygonum ramosissimum_: bushy knotweed
+* _Potentilla supina_: bushy cinquefoil
+* _Bromus commutatus_: meadow brome or hairy chess
+
+```{r results='hide'}
+library(ggrepel)
+
+# ordinations of the highest and lowest disturbed sites
+veg_hf2 <- veg_hf %>% 
+  select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+veg_hf2 <- veg_hf2 %>% 
+  spread(key=Species, value=PA) %>% 
+  gather(key=Species, value=PA, 6:ncol(.)) %>% 
+  replace_na(list(PA=0)) %>% 
+  spread(key=Species, value=PA) 
+
+veg_hf2 <- left_join(veg_hf2, select(hf_tot, -totdist_percent), by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+veg_hf2 <- veg_hf2 %>% filter(HFbin==1 | HFbin==10) %>% select(NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+
+# distance matrix
+veg_d <- vegdist(veg_hf2[,7:ncol(veg_hf2)], method="jaccard", binary=T)
+
+veg.nmds4 <- metaMDS(veg_hf2[,7:ncol(veg_hf2)], distance="jaccard", binary=T, k=4,trymax=100)
+```
+
+```{r plot ordinations}
+# check for sig diffs among groups
+# mrpp(veg_d, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
+
+# extract site scores and convert to df
+veg.scores <- data.frame(scores(veg.nmds4, "sites"))
+# add in protocol, site, year, 
+veg.scores$Protocol <- as.factor(veg_hf2$Protocol)
+veg.scores$Site <- veg_hf2$Site
+veg.scores$Year <- veg_hf2$Year
+veg.scores$NRNAME <- veg_hf2$NRNAME
+veg.scores$HFbin <- veg_hf2$HFbin
+
+spscores <- data.frame(scores(veg.nmds4, display="species"))
+
+spscores$Species <- rownames(spscores)
+
+impsp_5 <- bind_rows(top_n(spscores, 5, wt=NMDS1),
+                     top_n(spscores, -5, wt=NMDS1))
+
+spdriversp <- ggplot(data=impsp_5) +
+  geom_point(data=veg.scores, 
+             aes(x=NMDS1, y=NMDS2, 
+                 color=as.factor(HFbin), 
+                 shape=as.factor(HFbin)),
+             size=3) +
+  stat_ellipse(data=veg.scores, 
+               aes(x=NMDS1, y=NMDS2, 
+                   color=as.factor(HFbin))) +
+  scale_color_brewer(palette = "Dark2", name="HF Bin") +
+  scale_shape_manual(values=c(15,16), name="HF Bin") +
+  geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+               color=1,
+               arrow=arrow(length=unit(0.3, "cm"))) +
+  geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+                   box.padding=1, size=3.5) +
+  theme(legend.position="top")
+spdriversp
+```
+
+### 3.2 U-shaped relationshiop between CSI and richness 
+
+Community specialization index (CSI) is a measure of the mean niche breadth of species within a community. Species which occur with high frequency under a narrow HF are highly specialized and have a narrow niche bread; conversely, species which occur across a range of HF levels are less specialized and have a broader niche breadth. 
+
+We include Protocol as a fixed effect and unique Site ID as a random effect (although in this model the variance explained by the random effect is indistinguishable from 0).  
+
+Plant community CSI shows a slightly U-shaped relationship with HF, indicating that communities at high and low develoment intensities are composed of more specialized species than communities at intermediate develoment intensities. We speculate that communities at intermediate development intensities encompass the edges of two, different "preferred" habitats (or niches) - either higher or lower development intensities. 
+
+Communities at high and low develoment intensities both are composed of species with high specialization to that respective habitat. Species at low development intensities may be so-called "competitive" species, with a high capacity to catpure limiting soil nutrients (or they could also be stress-tolerant species, if climate is the stronger limiting factor). In contrast, species at high development intesnities may be so-called "ruderal" species, which are r-selected species with high dispersal capacity.
+
+```{r overall realtionship}
+# relationship between veg community specialization and HF
+  veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
+
+  # csi.linear <- lmer(CSI ~ totdist_percent + Protocol +
+  #                           (1|UniqueID), 
+  #            data=veg_CSI_HF,
+  #            REML = F)
+  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
+                     (1|UniqueID), 
+                   data=veg_CSI_HF,
+                          REML = F)
+  # csi.poly.noprotocol <- lmer(CSI ~ poly(totdist_percent,2) +
+  #                               (1|UniqueID), 
+  #                             data=veg_CSI_HF,
+  #                             REML = F)
+  piecewiseSEM::rsquared(csi.poly)
+  
+  ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    theme_classic() +
+    theme(legend.position = "top")
+```
+
+# 4. How does the proportion of exotic species contribute to these patterns?
+
+```{r load exotics data}
+exotics <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/exotic_plants_ab.csv", sep=";")
+
+hf_exot <- left_join(veg_hf, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
+hf_exot <- hf_exot %>% 
+  group_by(Protocol, Site,Year,totdist_percent, ORIGIN) %>% 
+  tally() %>% 
+  spread(key=ORIGIN, value=n) %>% 
+  replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
+  rowwise() %>% 
+  mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
+         propexotic=100*(Exotic/rich))
+
+hf_exot <- left_join(veg_CSI_HF, 
+                     hf_exot, 
+                     by=c("Protocol", "Site", "Year", "totdist_percent")) %>% 
+  select(-Exotic, -Native, -`Unknown/Undetermined`)
+```
+
+Communities with a higher proprtion of exotic species inhabit areas with more human development (a), lower species richness (b), and higher community specialization (c). Thus, we find interactions between development and the proportion of exotic species that describe patterns of species richnes and CSI.
+
+```{r exotics x HF}
+exotic1 <- ggplot(hf_exot, aes(x=totdist_percent, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
+              method="lm", formula=y~poly(x,2), se=F, size=0.5, color=1) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  labs(x="Total Development (%)", y="Exotic Sp. (%)") +
+  theme(legend.position = "top")
+
+exotic2 <- ggplot(hf_exot, aes(x=rich, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  labs(x="Sp. Rich.", y="Exotic Sp. (%)") 
+
+exotic3 <- ggplot(hf_exot, aes(x=CSI, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  geom_smooth(method="lm",se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=CSI, y=propexotic, linetype=Protocol),
+              method="lm", se=F, size=0.5, color=1) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  labs(x="CSI", y="Exotic Sp. (%)") +
+  theme(legend.position = "top")
+myleg <- get_legend(exotic1)
+exotp <- plot_grid(exotic1 + theme(legend.position = "none"), 
+          exotic2,
+          exotic3 + theme(legend.position = "none"), 
+          nrow=1, ncol=3,
+          labels = "auto")
+
+plot_grid(myleg, exotp, ncol=1, nrow=2, rel_heights = c(0.05,1))
+```
+
+### 4.1 Richness
+```{r}
+rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + Protocol + (1|UniqueID), data=hf_exot, REML=F)
+```
+
+The best model describing species richness included protocol, and an interaction between total development and the proportion of exotic species. The fixed effects of this model explained `r round(piecewiseSEM::rsquared(rich.poly.exot.interaction)$Marginal, 2)` proportion of the variation in richness; the fixed + random effects (i.e. site ID) explained `r round(piecewiseSEM::rsquared(rich.poly.exot.interaction)$Conditional, 2)` proportion of the variation.
+
+Qualitatively, we again see that sites with a high proportion of exotic species are clusted ar the high end of the human development gradient, and have particularly low species richness.
+
+```{r rich vs dist by exotics}
+ggplot(hf_exot, aes(x=totdist_percent, y=rich)) +
+  geom_point(alpha=0.8, aes(color=propexotic)) +
+  labs(x="Total Human Development (%)", y="Species Richness") +
+  geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+              method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+  theme_classic() +
+  theme(legend.position = "top")
+```
+
+### 4.2 CSI
+```{r}
+  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + Protocol +
+                                       (1|UniqueID),
+                                     data=hf_exot,
+                                     REML=F)
+```
+
+The best model of CSI included an interaction between human development and the proportion of exotics. The fixed effects of this model explained `r round(piecewiseSEM::rsquared(csi.poly.exot.interaction)$Marginal, 2)` proportion of the variation in richness; the fixed + random effects (i.e. site ID) explained `r round(piecewiseSEM::rsquared(csi.poly.exot.interaction)$Conditional, 2)` proportion of the variation.
+
+Qualitatively, we again see that sites with a high proportion of exoric species are found at the high end of the development gradient, and these sites have particularly high specialization. Note that the proportion of exotic species is a stronger determinant of CSI than of species richness.
+
+```{r rich and CSI x HF colored by exotics}
+ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
+  geom_point(alpha=0.8, aes(color=propexotic)) +
+  labs(x="Total Human Development (%)", y="CSI") +
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+              method="lm",se=F, formula=y~poly(x,2), size=0.5, color=1) +  
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+  theme(legend.position = "top") 
+```
+

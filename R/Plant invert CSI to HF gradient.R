@@ -18,38 +18,38 @@ veg_pa %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME
 
 # compute total dist of each HF Cat ####
 # this doesn't make much sense b/c we are summing percents
-head(hf)
-ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
-  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
-  ggplot(aes(x=NRNAME, y=totdist, fill=HFCategory)) +
-  geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Total Area (down-scaled km2)") +
-  theme_classic() +
-  theme(legend.position = "top",
-        legend.title=element_blank())
+{
+  ptotdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+    summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
+    ggplot(aes(x=NRNAME, y=totdist, fill=HFCategory)) +
+    geom_bar(stat="identity", position = position_stack()) +
+    labs(x=NULL, y="Total Area (down-scaled km2)") +
+    theme_classic() +
+    theme(legend.position = "top",
+          legend.title=element_blank())
+  
+  ppropdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
+    summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
+    group_by(NRNAME) %>%  
+    mutate(totdist_all = sum(totdist),
+           propdist=100*totdist/totdist_all) %>% 
+    ggplot(aes(x=NRNAME, y=propdist, fill=HFCategory)) +
+    geom_bar(stat="identity", position = position_stack()) +
+    labs(x=NULL, y="Proportional Developed Area (down-scaled %)") +
+    theme_classic() +
+    theme(legend.position = "top",
+          legend.title=element_blank())
 
-ppropdist <- hf %>% group_by(NRNAME, HFCategory) %>% 
-  summarize(totdist=sum(((Area_percent/100)*(pi*.25^2))) ) %>% 
-  group_by(NRNAME) %>%  
-  mutate(totdist_all = sum(totdist),
-         propdist=100*totdist/totdist_all) %>% 
-  ggplot(aes(x=NRNAME, y=propdist, fill=HFCategory)) +
-  geom_bar(stat="identity", position = position_stack()) +
-  labs(x=NULL, y="Proportional Developed Area (down-scaled %)") +
-  theme_classic() +
-  theme(legend.position = "top",
-        legend.title=element_blank())
-
-hfcats <- plot_grid(ptotdist + theme(legend.position = "none"),
-          ppropdist + theme(legend.position = "none"), nrow=1, ncol=2 )
-
-myleg <- get_legend(ptotdist)
-
-hfcats <- cowplot::plot_grid(myleg,
-                             hfcats,
-                             ncol=1,rel_heights = c(0.2,2))
-hfcats
-
+  hfcats <- plot_grid(ptotdist + theme(legend.position = "none"),
+            ppropdist + theme(legend.position = "none"), nrow=1, ncol=2 )
+  
+  myleg <- get_legend(ptotdist)
+  
+  hfcats <- cowplot::plot_grid(myleg,
+                               hfcats,
+                               ncol=1,rel_heights = c(0.2,2))
+  hfcats
+}
 
 # calculate total disturbance ####
 hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
@@ -163,41 +163,50 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
 }
 
 
-# plotting relatinoships bw CSI and HF gradient ####
-# distribution of site-level CSI
+# compare CSI across HF gradient ####
 {
+  veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
+  
   ggplot(veg_CSI_HF, aes(x=CSI)) +
     geom_histogram(bins=30) 
 
-# relationship between veg community specialization and HF
-  m.linear.raneff <- lmer(CSI ~ totdist_percent + 
-                            (1|paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")), 
+  # stats - CSI
+  csi.linear <- lmer(CSI ~ totdist_percent + Protocol +
+                            (1|UniqueID), 
              data=veg_CSI_HF,
              REML = F)
-  m.poly.raneff <- lmer(CSI ~ poly(totdist_percent,2) + 
-                            (1|paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")), 
-                          data=veg_CSI_HF,
+  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
+                     (1|UniqueID), 
+                   data=veg_CSI_HF,
                           REML = F)
-  summary(m.linear.raneff) # variance on group RE indistinguishable from zero
-  summary(m.poly.raneff) # variance on group RE indistinguishable from zero
+  csi.poly.noprotocol <- lmer(CSI ~ poly(totdist_percent,2) +
+                                (1|UniqueID), 
+                              data=veg_CSI_HF,
+                              REML = F)
+  summary(csi.linear) # variance on group RE indistinguishable from zero
+  summary(csi.poly) # variance on group RE indistinguishable from zero
   
-  m.linear <- lm(CSI ~ totdist_percent, data=veg_CSI_HF)
-  summary(m.linear)
-  m.poly <- lm(CSI ~ poly(totdist_percent,2), data=veg_CSI_HF)
-  summary(m.poly)
-  m.poly3 <- lm(CSI ~ poly(totdist_percent,3), data=veg_CSI_HF)
-  summary(m.poly3)
-  AIC(m.linear, m.poly, m.poly3)
+  AIC(csi.linear, csi.poly, csi.poly.noprotocol) # csi poly
+  anova(csi.linear, csi.poly, csi.poly.noprotocol)
+  piecewiseSEM::rsquared(csi.poly)
+
+  # m.linear <- lm(CSI ~ totdist_percent, data=veg_CSI_HF)
+  # summary(m.linear)
+  # m.poly <- lm(CSI ~ poly(totdist_percent,2), data=veg_CSI_HF)
+  # summary(m.poly)
+  # m.poly3 <- lm(CSI ~ poly(totdist_percent,3), data=veg_CSI_HF)
+  # summary(m.poly3)
+  # AIC(m.linear, m.poly, m.poly3)
   
-  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI)) +
+  ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-    geom_point(alpha=0.5) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color="blue") +
-    geom_smooth(method="lm", se=F, linetype="dashed", color="red") +
-    annotate(geom="text", x=0, y=2, label="Poly: R2 = 0.28, AIC = -2408, p < 0.001", color="blue", size=5, hjust=0) +
-    annotate(geom="text", x=0, y=1.9, label="Linear: R2 = 0.24, AIC = -2301, p < 0.001", color="red", size=5, hjust=0) +
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
-    theme(legend.position = "none")
+    theme(legend.position = "top")
   
   m.poly.raneff.protocol <- lmer(CSI ~ poly(totdist_percent,2) + 
                             (1|Protocol), 
@@ -243,119 +252,206 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
   head(veg_pa)
   spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
   spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+  spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
+  head(spR)
   
-  m.linear.raneff.rich <- lmer(rich ~ totdist_percent + 
-                            (1|paste(spR$Protocol, spR$Site, sep="_")), 
-                          data=spR,
-                          REML = F)
-  m.poly.raneff.rich <- lmer(rich ~ poly(totdist_percent,2) + 
-                          (1|paste(spR$Protocol, spR$Site, sep="_")), 
-                        data=spR,
-                        REML = F)
-  summary(m.linear.raneff.rich) # RE of unique site ID should be kept
-  summary(m.poly.raneff.rich) # RE of unique site ID should be kept
-  AIC(m.linear.raneff.rich, m.poly.raneff.rich) # poly model is better
+  # stats - richness
+  {
+  rich.linear <- lmer(rich ~ totdist_percent + Protocol +
+                            (1|UniqueID), 
+                          data=spR, REML=F)
+  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+                          (1|UniqueID), 
+                        data=spR, REML=F)
+  summary(rich.linear) # RE of unique site ID should be kept
+  summary(rich.poly) # RE of unique site ID should be kept
+  anova(rich.linear, rich.poly)
+  anova(rich.poly)
+  piecewiseSEM::rsquared(rich.poly)
   
-  # do we need to inclue Protocol as a main effect?
-  m.poly.raneff.rich.protocol <- lmer(rich ~ poly(totdist_percent,2)*Protocol + 
-                               (1|paste(spR$Protocol, spR$Site, sep="_")), 
-                             data=spR,
-                             REML = F)
-  AIC(m.poly.raneff.rich, m.poly.raneff.rich.protocol)
+  
+  # protool as main effect - nix
+  {
+  # # do we need to inclue Protocol as a main effect?
+  # m.linear.rich.protocol <- lmer(rich ~ totdist_percent * Protocol + 
+  #                                       (1|UniqueID), 
+  #                                     data=spR, REML=F)
+  # m.poly.rich.protocol <- lmer(rich ~ poly(totdist_percent,2) * Protocol + 
+  #                              (1|UniqueID), 
+  #                            data=spR,
+  #                            REML=F)
+  # m.rich.protocol <- lmer(rich ~ Protocol + 
+  #                                (1|UniqueID), 
+  #                              data=spR, REML=F)
+  # AIC(m.linear.rich, # linear m
+  #     m.poly.rich, # poly m
+  #     m.linear.rich.protocol, # linear * protocol
+  #     m.poly.rich.protocol, # poly * protocol
+  #     m.rich.protocol # protocol only
+  #     ) # 
+  # 
+  # summary(m.poly.rich.protocol)
+  # stats::anova(
+  #   m.poly.rich, # poly m
+  #   m.rich.protocol, # protocol only
+  #   m.linear.rich, # linear m
+  #   m.linear.rich.protocol, # linear * protocol
+  #   m.poly.rich.protocol # poly * protocol
+  #   )
+  # 
+  # anova(m.poly.rich.protocol, type="2")
+  # piecewiseSEM::rsquared(m.poly.rich)
+  # piecewiseSEM::rsquared(m.poly.rich.protocol)
+  }
+  }
   
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
-    geom_point(alpha=0.5) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    facet_wrap(~Protocol) +
-    theme_classic()
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    theme_classic() +
+    theme(legend.position = "top")
+
+}
+
+# exotic species ####
+# prep data
+{
+  exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
+  hf_exot <- left_join(veg_hf, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
+
+  hf_exot <- hf_exot %>% 
+    group_by(Protocol, Site,Year,totdist_percent, ORIGIN) %>% 
+    tally() %>% 
+    spread(key=ORIGIN, value=n) %>% 
+    replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
+    rowwise() %>% 
+    mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
+           propexotic=100*(Exotic/rich))
   
-  head(spR)
-  summary(lm(rich~poly(totdist_percent, 2)*Protocol, data=spR))
+  hf_exot <- left_join(veg_CSI_HF, 
+                       hf_exot, 
+                       by=c("Protocol", "Site", "Year", "totdist_percent")) %>% 
+    select(-Exotic, -Native, -`Unknown/Undetermined`)
+  hf_exot$UniqueID <- paste(hf_exot$Protocol, hf_exot$Site, sep="_")
+}
+
+# plot
+#  exotics ~ HF
+exotic1 <- ggplot(hf_exot, aes(x=totdist_percent, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
+              method="lm", formula=y~poly(x,2), se=F, size=0.5, color=1) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  labs(x="Total Development (%)", y="Exotic Sp. (%)") +
+  theme(legend.position = "top")
+
+exotic2 <- ggplot(hf_exot, aes(x=rich, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  labs(x="Sp. Rich.", y="Exotic Sp. (%)") 
+
+exotic3 <- ggplot(hf_exot, aes(x=CSI, y=propexotic)) +
+  geom_point(alpha=0.5, color="grey70") +
+  geom_smooth(method="lm",se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=CSI, y=propexotic, linetype=Protocol),
+              method="lm", se=F, size=0.5, color=1) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  labs(x="CSI", y="Exotic Sp. (%)") +
+  theme(legend.position = "top")
+myleg <- get_legend(exotic1)
+exotp <- plot_grid(exotic1 + theme(legend.position = "none"), 
+          exotic2,
+          exotic3 + theme(legend.position = "none"), 
+          nrow=1, ncol=3,
+          labels = "auto")
+plot_grid(myleg, exotp, ncol=1, nrow=2, rel_heights = c(0.05,1))
+
+
+# RICHNESS
+ggplot(hf_exot, aes(x=totdist_percent, y=rich)) +
+  geom_point(alpha=0.8, aes(color=propexotic)) +
+  labs(x="Total Human Development (%)", y="Species Richness") +
+  geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+              method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
+  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+  theme_classic() +
+  theme(legend.position = "top")
+
+# stats
+{
+  rich.poly # previous best
+  # refit previous best w/ updated df
+  rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+                       (1|UniqueID),
+                     data=hf_exot,
+                     REML=F)
+  rich.exot.only <- lmer(rich ~ propexotic + Protocol +
+                        (1|UniqueID),
+                      data=hf_exot,
+                      REML=F)
+  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2) + propexotic + Protocol +
+                     (1|UniqueID),
+                   data=hf_exot,
+                   REML=F)
+  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + Protocol +
+                        (1|UniqueID),
+                      data=hf_exot,
+                      REML=F)
+  
+  AIC(rich.poly2, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  anova(rich.poly2, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  summary(rich.poly.exot.interaction)
+  piecewiseSEM::rsquared(rich.poly.exot.interaction)
+  piecewiseSEM::rsquared(rich.poly2)
+  anova(rich.poly.exot.interaction, type="chisq")
 }
 
 
-# exotic species ####
-exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
-head(exotics)
-head(veg_hf)
-
-hf_exot <- left_join(veg_hf, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
-head(hf_exot)
-hf_exot <- hf_exot %>% 
-  group_by(Protocol, Site,Year,totdist_percent, ORIGIN) %>% 
-  tally() %>% 
-  spread(key=ORIGIN, value=n) %>% 
-  replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
-  rowwise() %>% 
-  mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
-         propexotic=100*(Exotic/rich))
-
-hf_exot <- left_join(veg_CSI_HF, 
-                     hf_exot, 
-                     by=c("Protocol", "Site", "Year", "totdist_percent")) %>% 
-  select(-Exotic, -Native, -`Unknown/Undetermined`)
-
-head(hf_exot)
-
-p1 <- ggplot(hf_exot, aes(x=rich, propexotic)) +
-  geom_point(alpha=0.5) +
-  labs(x="Sp. Rich.", y="Exotic Sp. (%)")
-p2 <- ggplot(hf_exot, aes(x=totdist_percent, propexotic)) +
-  geom_point(alpha=0.5) +
-  labs(x="Total Development (%)", y="Exotic Sp. (%)")
-p3 <- ggplot(hf_exot, aes(x=CSI, propexotic)) +
-  geom_point(alpha=0.5) +
-  labs(y="Exotic Sp. (%)")
-plot_grid(p1,p2,p3, nrow=1,ncol=3, labels="auto")
-
-p4 <- ggplot(hf_exot, aes(x=totdist_percent, y=rich)) +
-  geom_point(alpha=0.5, aes(color=propexotic)) +
-  geom_smooth(method="lm", formula=y~poly(x,2), color=1, se=F) + 
+# CSI
+ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
+  geom_point(alpha=0.8, aes(color=propexotic)) +
+  labs(x="Total Human Development (%)", y="CSI") +
+  geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+              method="lm",se=F, formula=y~poly(x,2), size=0.5, color=1) +  
+  scale_linetype_manual(values=c("dashed", "dotdash")) +
   scale_color_gradient(low="yellow", high="red", name="% Exotics") +
-  labs(x="Total Development (%)", y="Sp. Rich.") +
-  annotate(geom="text", x=0, y=110, 
-           label="Rich ~ poly(totdist_percent,2) + propexotic: \n R2 = 0.07 p<0.001", 
-           size=5, hjust=0) +
   theme(legend.position = "top") 
+
+# stats
+{
+  csi.poly # previous best
+  # refit previous best w/ updated df
+  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
+                       (1|UniqueID),
+                     data=hf_exot,
+                     REML=F)
+  csi.exot.only <- lmer(CSI ~ propexotic + Protocol +
+                           (1|UniqueID),
+                         data=hf_exot,
+                         REML=F)
+  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + propexotic + Protocol +
+                           (1|UniqueID),
+                         data=hf_exot,
+                         REML=F)
+  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + Protocol +
+                                       (1|UniqueID),
+                                     data=hf_exot,
+                                     REML=F)
   
-m1 <- lm(rich ~ poly(totdist_percent,2) * propexotic, data=hf_exot)
-m2 <- lm(rich ~ poly(totdist_percent,2) + propexotic, data=hf_exot)
-m3 <- lm(rich ~ propexotic, data=hf_exot)
-m4 <- lm(rich ~ poly(totdist_percent,2) , data=hf_exot)
-AIC(m1,m2,m3,m4)
-summary(m2)
-
-p5 <- ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
-  geom_point(alpha=0.5, aes(color=propexotic)) +
-  geom_smooth(method="lm", formula=y~poly(x,2), color=1, se=F) + 
-  scale_color_gradient(low="yellow", high="red", name="% Exotics") +
-  labs(x="Total Development (%)") +
-  annotate(geom="text", x=0, y=1.8, 
-           label="CSI ~ poly(totdist_percent,2) * propexotic + rich: \n R2 = 0.66 p<0.001", 
-          size=5, hjust=0) +
-  theme(legend.position = "top")
-
-m5 <- lm(CSI ~ poly(totdist_percent,2) * propexotic * rich, data=hf_exot)
-m6 <- lm(CSI ~ poly(totdist_percent,2) * propexotic + rich, data=hf_exot)
-m6a <- lm(CSI ~ poly(totdist_percent,2) * propexotic, data=hf_exot)
-m7 <- lm(CSI ~ propexotic, data=hf_exot)
-
-m8 <- lm(CSI ~ poly(totdist_percent,2) , data=hf_exot)
-m9 <- lm(CSI ~ rich , data=hf_exot)
-
-AIC(m5,m6,m6a, m7)
-summary(m6)
-
-
-myleg <- get_legend(p4)
-tmpp <- plot_grid(p4 + theme(legend.position="none"),
-          p5 + theme(legend.position="none"), 
-          nrow=2,ncol=1, labels="auto")
-tmpp <- plot_grid(myleg, tmpp, nrow=2, ncol=1, rel_heights = c(0.2,1))
-tmpp
-
-
+  AIC(csi.poly2, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  anova(csi.poly2, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  summary(csi.poly.exot.interaction)
+  piecewiseSEM::rsquared(csi.poly.exot.interaction)
+  piecewiseSEM::rsquared(csi.poly2)
+  anova(csi.poly.exot.interaction, type="chisq")  
+}
 
 
 # now compare how plant comm sensitivity to HF varies across clim gradients

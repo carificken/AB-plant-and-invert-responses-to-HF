@@ -3,9 +3,9 @@ title: "AB plant and invert responses to HF"
 author: "Cari D. Ficken"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
