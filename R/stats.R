@@ -2,6 +2,7 @@
 
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
+library(ape)
 
 rm(list=ls())
 
@@ -63,19 +64,49 @@ rm(list=ls())
   
 }
 
-# 0. test for spatial autocorrelation
+# 0. test for spatial autocorrelation - i 
 {
+  # richness w/ ape::Moran.I
+  {
+    head(spR)
+    # create inverse distance matrix
+    rich.d <- as.matrix(dist(cbind(spR$Longitude, spR$Latitude)))
+    rich.d.inv <- 1/rich.d
+    diag(rich.d.inv) <- 0
+    rich.d.inv[1:5, 1:5] # inf values have same coords
+    rich.d.inv[is.infinite(rich.d.inv)] <- 0
+    
+    Moran.I(spR$rich, rich.d.inv) # yes spatial autocorr
+  }
   
+  # CSI
+  {
+    head(veg_CSI_HF)
+    csi.d <- as.matrix(dist(cbind(veg_CSI_HF$Longitude, veg_CSI_HF$Latitude)))
+    csi.d.inv <- 1/csi.d
+    diag(csi.d.inv) <- 0
+    csi.d.inv[1:5, 1:5] # inf values have same coords
+    csi.d.inv[is.infinite(csi.d.inv)] <- 0
+    
+    Moran.I(veg_CSI_HF$CSI, csi.d.inv) # yes spatial autocorr
+    
+  }
+
 }
 
 # 1. how does sp richness vary across HF gradient
 {
+  spR$Year <- as.factor(spR$Year)
   # should HF be linear or quad? and does ran ef variance differ from zero?
-  rich.linear <- lmer(rich ~ totdist_percent + Protocol + Latitude + Longitude +  Year +
-                        (1|UniqueID), 
+  rich.linear <- lmer(rich ~ totdist_percent + 
+                        Protocol + 
+                        Latitude + Longitude + 
+                        (1|Year) + (1|UniqueID), 
                       data=spR, REML=F)
-  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +  Year +
-                      (1|UniqueID), 
+  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                      Protocol + 
+                      Latitude + Longitude +  
+                      (1|Year) + (1|UniqueID), 
                     data=spR, REML=F)
   summary(rich.linear) # RE of unique site ID should be kept
   summary(rich.poly) # RE of unique site ID should be kept
@@ -85,14 +116,17 @@ rm(list=ls())
   #           random=~1|UniqueID,
   #           data=spR), type="marginal")
   
-  rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
-                       (1|UniqueID), 
+  rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + 
+                       Protocol + 
+                       Latitude + Longitude +
+                       (1|Year) + (1|UniqueID), 
                      data=spR, REML=F)
-  rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
-                       (1|UniqueID), 
+  rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + 
+                       Protocol +
+                       (1|Year) + (1|UniqueID), 
                      data=spR, REML=F)
   rich.poly3 <- lmer(rich ~ poly(totdist_percent,2) + 
-                       (1|UniqueID), 
+                       (1|Year) + (1|UniqueID), 
                      data=spR, REML=F)
   
   AIC(rich.poly, rich.poly1, rich.poly2, rich.poly3)  
@@ -102,12 +136,16 @@ rm(list=ls())
 
 # 2. How does CSI vary with HF
 {
-  csi.linear <- lmer(CSI ~ totdist_percent + Protocol + Latitude + Longitude + Year +
-                       (1|UniqueID), 
+  csi.linear <- lmer(CSI ~ totdist_percent + 
+                       Protocol + 
+                       Latitude + Longitude + 
+                       (1|Year) + (1|UniqueID), 
                      data=veg_CSI_HF,
                      REML = F)
-  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year +
-                     (1|UniqueID), 
+  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + 
+                     Protocol + 
+                     Latitude + Longitude +
+                     (1|Year) + (1|UniqueID), 
                    data=veg_CSI_HF,
                    REML = F)
   summary(csi.linear) # variance on group RE indistinguishable from zero
@@ -119,22 +157,25 @@ rm(list=ls())
   #           random=~1|UniqueID,
   #           data=veg_CSI_HF), type="marginal")
   
-  csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
-                      (1|UniqueID), 
+  csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + 
+                      Protocol + 
+                      Latitude + Longitude +
+                      (1|Year) + (1|UniqueID), 
                     data=veg_CSI_HF,
                     REML = F)
-  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
-                      (1|UniqueID), 
+  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + 
+                      Protocol +
+                      (1|Year) + (1|UniqueID), 
                     data=veg_CSI_HF,
                     REML = F)
   csi.poly3 <- lmer(CSI ~ poly(totdist_percent,2) +
-                      (1|UniqueID), 
+                      (1|Year) + (1|UniqueID), 
                     data=veg_CSI_HF,
                     REML = F)
   
   AIC(csi.poly, csi.poly1, csi.poly2, csi.poly3)
   
-  summary(csi.poly1)
+  summary(csi.poly1) # lat/long coords are important
   piecewiseSEM::rsquared(csi.poly1)
   
 }
@@ -143,20 +184,25 @@ rm(list=ls())
 {
   rich.poly2 # previous best
   # refit previous best w/ updated df
-  rich.poly2a <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
-                        (1|UniqueID),
+  rich.poly2a <- lmer(rich ~ poly(totdist_percent,2) + 
+                        Protocol +
+                        (1|Year) + (1|UniqueID), 
                       data=veg_exot,
                       REML=F)
-  rich.exot.only <- lmer(rich ~ propexotic + Protocol +
-                           (1|UniqueID),
+  rich.exot.only <- lmer(rich ~ propexotic + 
+                           Protocol +
+                           (1|Year) + (1|UniqueID), 
                          data=veg_exot,
                          REML=F)
-  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2) + propexotic + Protocol +
-                           (1|UniqueID),
+  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2) + 
+                           propexotic + 
+                           Protocol +
+                           (1|Year) + (1|UniqueID), 
                          data=veg_exot,
                          REML=F)
-  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + Protocol +
-                                       (1|UniqueID),
+  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + 
+                                       Protocol +
+                                       (1|Year) + (1|UniqueID), 
                                      data=veg_exot,
                                      REML=F)
   
@@ -172,20 +218,29 @@ rm(list=ls())
 {
   csi.poly1 # previous best
   # refit previous best w/ updated df
-  csi.poly1a <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
-                       (1|UniqueID),
+  csi.poly1a <- lmer(CSI ~ poly(totdist_percent,2) + 
+                       Protocol + 
+                       Latitude + Longitude +
+                       (1|Year) + (1|UniqueID), 
                      data=veg_exot,
                      REML=F)
-  csi.exot.only <- lmer(CSI ~ propexotic + Protocol + Latitude + Longitude +
-                          (1|UniqueID),
+  csi.exot.only <- lmer(CSI ~ propexotic +
+                          Protocol +
+                          Latitude + Longitude +
+                          (1|Year) + (1|UniqueID), 
                         data=veg_exot,
                         REML=F)
-  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + propexotic + Protocol + Latitude + Longitude +
-                          (1|UniqueID),
+  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + 
+                          propexotic + 
+                          Protocol + 
+                          Latitude + Longitude +
+                          (1|Year) + (1|UniqueID), 
                         data=veg_exot,
                         REML=F)
-  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + Protocol + Latitude + Longitude +
-                                      (1|UniqueID),
+  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + 
+                                      Protocol + 
+                                      Latitude + Longitude +
+                                      (1|Year) + (1|UniqueID), 
                                     data=veg_exot,
                                     REML=F)
   
