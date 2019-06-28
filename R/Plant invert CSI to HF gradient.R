@@ -3,18 +3,19 @@ library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
 
 # load plant data ####
-veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
+veg_pa <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
 veg_pa %>% distinct(Protocol, Site, Year) %>% nrow()
 
 # load HF data ####
-hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv") 
+hf <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF_latlong.csv") 
 hf %>% distinct(Protocol, Site, Year) %>% nrow()
+# calculate total disturbance ####
+hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
 
 # summary of site breakdown ####
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(Protocol) %>% tally()
 veg_pa %>% distinct(Protocol,WetlandType,Site,Year, NRNAME) %>% group_by(WetlandType) %>% tally()
 veg_pa %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME) %>% tally()
-
 
 # compute total dist of each HF Cat ####
 # this doesn't make much sense b/c we are summing percents
@@ -51,8 +52,7 @@ veg_pa %>% distinct(Protocol,WetlandType,Site, Year, NRNAME) %>% group_by(NRNAME
   hfcats
 }
 
-# calculate total disturbance ####
-hf_tot <- hf %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
+# hist of total disturbance
 ggplot(hf_tot, aes(x=totdist_percent)) + 
   geom_histogram(fill="grey80", color="black") + 
   labs(x="Total Developed Area (% of plot)", y="Num. Wetlands") +
@@ -60,7 +60,8 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   theme_classic() +
   theme(legend.position = "none")
 
-
+# OLDER calculate SSI 1X - replaced with randomizations
+{
 # calculate SSI for each speceis ####
 {
   # first create 10 bins
@@ -150,159 +151,104 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
     ggtitle("Human Footprint") +
     geom_point() 
 }
+}
+  
+# SSI from 1000 randomizations
+{
+  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+  head(sp_SSI)
+  colnames(sp_SSI) <- c("Species", "CV")
+}
 
 # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
 {
   veg_CSI_HF <- left_join(veg_pa, sp_SSI)
-  head(veg_CSI_HF)
   veg_CSI_HF <- veg_CSI_HF %>% 
     group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
     summarize(CSI=mean(CV, na.rm = T)) # 32 sites have na value for at least 1 sp
   
   veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
-}
-
-
-# compare CSI across HF gradient ####
-{
   veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
   
-  ggplot(veg_CSI_HF, aes(x=CSI)) +
-    geom_histogram(bins=30) 
-
-  # stats - CSI
-  csi.linear <- lmer(CSI ~ totdist_percent + Protocol +
-                            (1|UniqueID), 
-             data=veg_CSI_HF,
-             REML = F)
-  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
-                     (1|UniqueID), 
-                   data=veg_CSI_HF,
-                          REML = F)
-  csi.poly.noprotocol <- lmer(CSI ~ poly(totdist_percent,2) +
-                                (1|UniqueID), 
-                              data=veg_CSI_HF,
-                              REML = F)
-  summary(csi.linear) # variance on group RE indistinguishable from zero
-  summary(csi.poly) # variance on group RE indistinguishable from zero
-  
-  AIC(csi.linear, csi.poly, csi.poly.noprotocol) # csi poly
-  anova(csi.linear, csi.poly, csi.poly.noprotocol)
-  piecewiseSEM::rsquared(csi.poly)
-
-  # m.linear <- lm(CSI ~ totdist_percent, data=veg_CSI_HF)
-  # summary(m.linear)
-  # m.poly <- lm(CSI ~ poly(totdist_percent,2), data=veg_CSI_HF)
-  # summary(m.poly)
-  # m.poly3 <- lm(CSI ~ poly(totdist_percent,3), data=veg_CSI_HF)
-  # summary(m.poly3)
-  # AIC(m.linear, m.poly, m.poly3)
-  
-  ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
-    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-    geom_point(alpha=0.5, color="grey70") + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
-    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
-                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
-    theme_classic() +
-    theme(legend.position = "top")
-  
-  m.poly.raneff.protocol <- lmer(CSI ~ poly(totdist_percent,2) + 
-                            (1|Protocol), 
-                          data=veg_CSI_HF,
-                          REML = F)
-  summary(m.poly.raneff.protocol) # again RE is indistinguishable from 0
-  
-  m.poly.protocol <- lm(CSI ~ poly(totdist_percent,2)*Protocol, data=veg_CSI_HF)
-  m.poly.protocol2 <- lm(CSI ~ poly(totdist_percent,2)+Protocol, data=veg_CSI_HF)
-  summary(m.poly.protocol)
-  AIC(m.poly, m.poly.protocol, m.poly.protocol2)
-
-  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
-  ggtitle("Protocol") +
-  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-  geom_point(alpha=0.5) + 
-  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-  facet_wrap(~Protocol) +
-  theme_classic() +
-  theme(legend.position = "none")
-
-ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=WetlandType)) +
-  ggtitle("Wetland Class") +
-  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-  geom_point(alpha=0.5) + 
-  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-  theme_classic() +
-  facet_wrap(~WetlandType) +
-  theme(legend.position = "none")
-
-ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
-  ggtitle("Natural Region") +
-  labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-  geom_point(alpha=0.5) + 
-  geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-  theme_classic() +
-  facet_wrap(~NRNAME) +
-  theme(legend.position = "none")
 }
 
-# compare sp richness across HF gradient (intermediate disturbance hypothesis) ####
+# examine spatial & temporal correlations of HF ####
+{
+
+  # latitude - sig & strong cor
+  ggplot(veg_CSI_HF, aes(x=Latitude, y=totdist_percent)) +
+    geom_point(aes(color=NRNAME)) +
+    # geom_smooth(method="lm") +
+    labs(x="Latitude", y="Disturbance (%)") +
+    theme(legend.position="top",
+          legend.title = element_blank())
+  summary(lm(totdist_percent ~ Latitude, data=veg_CSI_HF))
+  cor(veg_CSI_HF$Latitude, veg_CSI_HF$totdist_percent)
+
+  # longitude - sig and weak cor
+  ggplot(veg_CSI_HF, aes(x=Longitude, y=totdist_percent)) +
+    geom_point(aes(color=NRNAME)) +
+    labs(x="Longitude", y="Disturbance (%)") +
+    theme(legend.position="top",
+          legend.title = element_blank())
+  summary(lm(totdist_percent ~ Longitude, data=veg_CSI_HF)) # sig
+  cor(veg_CSI_HF$Longitude, veg_CSI_HF$totdist_percent)
+  
+  # year; not sig
+  ggplot(veg_CSI_HF, aes(x=Year, y=totdist_percent)) +
+    geom_jitter(aes(color=NRNAME)) +
+    labs(x="Year", y="Disturbance (%)") +
+    theme(legend.position="top",
+          legend.title = element_blank())
+  summary(lm(totdist_percent ~ Year, data=veg_CSI_HF)) # ns
+  cor(veg_CSI_HF$Year, veg_CSI_HF$totdist_percent)
+  
+}
+
+# 1. compare sp richness across HF gradient (intermediate disturbance hypothesis) ####
 {
   head(veg_pa)
-  spR <- veg_pa %>% group_by(Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(rich=sum(PA))
-  spR <- inner_join(spR, hf_tot, by=c("Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+  spR <- veg_pa %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
+    summarize(rich=sum(PA))
+  spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
   head(spR)
+  # check for spatial & temporal correlations of this relationship too
+  tmp <- lm(rich ~ totdist_percent, data=spR)
+  summary(lm(tmp$residuals ~ spR$Latitude)) # ns
+  summary(lm(tmp$residuals ~ spR$Longitude)) # ns
+  summary(lm(tmp$residuals ~ spR$Year)) # ns
+  
   
   # stats - richness
   {
-  rich.linear <- lmer(rich ~ totdist_percent + Protocol +
-                            (1|UniqueID), 
-                          data=spR, REML=F)
-  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+    rich.linear <- lmer(rich ~ totdist_percent + Protocol + Latitude + Longitude +  Year +
                           (1|UniqueID), 
                         data=spR, REML=F)
-  summary(rich.linear) # RE of unique site ID should be kept
-  summary(rich.poly) # RE of unique site ID should be kept
-  anova(rich.linear, rich.poly)
-  anova(rich.poly)
-  piecewiseSEM::rsquared(rich.poly)
-  
-  
-  # protool as main effect - nix
-  {
-  # # do we need to inclue Protocol as a main effect?
-  # m.linear.rich.protocol <- lmer(rich ~ totdist_percent * Protocol + 
-  #                                       (1|UniqueID), 
-  #                                     data=spR, REML=F)
-  # m.poly.rich.protocol <- lmer(rich ~ poly(totdist_percent,2) * Protocol + 
-  #                              (1|UniqueID), 
-  #                            data=spR,
-  #                            REML=F)
-  # m.rich.protocol <- lmer(rich ~ Protocol + 
-  #                                (1|UniqueID), 
-  #                              data=spR, REML=F)
-  # AIC(m.linear.rich, # linear m
-  #     m.poly.rich, # poly m
-  #     m.linear.rich.protocol, # linear * protocol
-  #     m.poly.rich.protocol, # poly * protocol
-  #     m.rich.protocol # protocol only
-  #     ) # 
-  # 
-  # summary(m.poly.rich.protocol)
-  # stats::anova(
-  #   m.poly.rich, # poly m
-  #   m.rich.protocol, # protocol only
-  #   m.linear.rich, # linear m
-  #   m.linear.rich.protocol, # linear * protocol
-  #   m.poly.rich.protocol # poly * protocol
-  #   )
-  # 
-  # anova(m.poly.rich.protocol, type="2")
-  # piecewiseSEM::rsquared(m.poly.rich)
-  # piecewiseSEM::rsquared(m.poly.rich.protocol)
-  }
+    rich.poly <- lmer(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +  Year +
+                        (1|UniqueID), 
+                      data=spR, REML=F)
+    summary(rich.linear) # RE of unique site ID should be kept
+    summary(rich.poly) # RE of unique site ID should be kept
+    AIC(rich.linear, rich.poly)
+    
+    anova(lme(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
+              random=~1|UniqueID,
+              data=spR), type="marginal")
+    
+    rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
+                         (1|UniqueID), 
+                       data=spR, REML=F)
+    rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+                         (1|UniqueID), 
+                       data=spR, REML=F)
+    rich.poly3 <- lmer(rich ~ poly(totdist_percent,2) + 
+                         (1|UniqueID), 
+                       data=spR, REML=F)
+    
+    AIC(rich.poly, rich.poly1, rich.poly2, rich.poly3)  
+    summary(rich.poly2) # latitudinal climate variables not important for richness
+    piecewiseSEM::rsquared(rich.poly2)
   }
   
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
@@ -314,17 +260,97 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
     theme(legend.position = "top")
-
+  
 }
 
-# exotic species ####
+# 2. compare CSI across HF gradient ####
+{
+  head(veg_CSI_HF)
+
+  ggplot(veg_CSI_HF, aes(x=CSI)) +
+    geom_histogram(bins=30) 
+
+  # stats - CSI
+  csi.linear <- lmer(CSI ~ totdist_percent + Protocol + Latitude + Longitude + Year +
+                            (1|UniqueID), 
+             data=veg_CSI_HF,
+             REML = F)
+  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year +
+                     (1|UniqueID), 
+                   data=veg_CSI_HF,
+                          REML = F)
+  summary(csi.linear) # variance on group RE indistinguishable from zero
+  summary(csi.poly) # variance on group RE indistinguishable from zero
+  
+  AIC(csi.linear, csi.poly) # csi poly
+  library(nlme)
+  anova(lme(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
+              random=~1|UniqueID,
+              data=veg_CSI_HF), type="marginal")
+  csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
+                     (1|UniqueID), 
+                   data=veg_CSI_HF,
+                   REML = F)
+  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
+                      (1|UniqueID), 
+                    data=veg_CSI_HF,
+                    REML = F)
+  csi.poly3 <- lmer(CSI ~ poly(totdist_percent,2) +
+                      (1|UniqueID), 
+                    data=veg_CSI_HF,
+                    REML = F)
+  
+  AIC(csi.poly, csi.poly1, csi.poly2, csi.poly3)
+  
+  summary(csi.poly1)
+  piecewiseSEM::rsquared(csi.poly1)
+
+  ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    theme_classic() +
+    theme(legend.position = "top")
+  
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
+    ggtitle("Protocol") +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    facet_wrap(~Protocol) +
+    theme_classic() +
+    theme(legend.position = "none")
+
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=WetlandType)) +
+    ggtitle("Wetland Class") +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5) +
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() +
+    facet_wrap(~WetlandType) +
+    theme(legend.position = "none")
+
+  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
+    ggtitle("Natural Region") +
+    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    geom_point(alpha=0.5) +
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    theme_classic() +
+    facet_wrap(~NRNAME) +
+    theme(legend.position = "none")
+}
+
+# 3. exotic species ####
 # prep data
 {
   exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
-  hf_exot <- left_join(veg_hf, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
+  veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
 
-  hf_exot <- hf_exot %>% 
-    group_by(Protocol, Site,Year,totdist_percent, ORIGIN) %>% 
+  veg_exot <- veg_exot %>% 
+    group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
     tally() %>% 
     spread(key=ORIGIN, value=n) %>% 
     replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
@@ -332,32 +358,31 @@ ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=NRNAME)) +
     mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
            propexotic=100*(Exotic/rich))
   
-  hf_exot <- left_join(veg_CSI_HF, 
-                       hf_exot, 
-                       by=c("Protocol", "Site", "Year", "totdist_percent")) %>% 
+  veg_exot <- left_join(veg_CSI_HF, 
+                       veg_exot, 
+                       by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
     select(-Exotic, -Native, -`Unknown/Undetermined`)
-  hf_exot$UniqueID <- paste(hf_exot$Protocol, hf_exot$Site, sep="_")
 }
 
-# plot
-#  exotics ~ HF
-exotic1 <- ggplot(hf_exot, aes(x=totdist_percent, y=propexotic)) +
+# plot exotics ~ HF
+{
+exotic1 <- ggplot(veg_exot, aes(x=totdist_percent, y=propexotic)) +
   geom_point(alpha=0.5, color="grey70") +
   geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
-  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
+  geom_smooth(data=veg_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
               method="lm", formula=y~poly(x,2), se=F, size=0.5, color=1) +
   scale_linetype_manual(values=c("dashed", "dotdash")) +
   labs(x="Total Development (%)", y="Exotic Sp. (%)") +
   theme(legend.position = "top")
 
-exotic2 <- ggplot(hf_exot, aes(x=rich, y=propexotic)) +
+exotic2 <- ggplot(veg_exot, aes(x=rich, y=propexotic)) +
   geom_point(alpha=0.5, color="grey70") +
   labs(x="Sp. Rich.", y="Exotic Sp. (%)") 
 
-exotic3 <- ggplot(hf_exot, aes(x=CSI, y=propexotic)) +
+exotic3 <- ggplot(veg_exot, aes(x=CSI, y=propexotic)) +
   geom_point(alpha=0.5, color="grey70") +
   geom_smooth(method="lm",se=F, color=1) +
-  geom_smooth(data=hf_exot, aes(x=CSI, y=propexotic, linetype=Protocol),
+  geom_smooth(data=veg_exot, aes(x=CSI, y=propexotic, linetype=Protocol),
               method="lm", se=F, size=0.5, color=1) +
   scale_linetype_manual(values=c("dashed", "dotdash")) +
   labs(x="CSI", y="Exotic Sp. (%)") +
@@ -369,92 +394,94 @@ exotp <- plot_grid(exotic1 + theme(legend.position = "none"),
           nrow=1, ncol=3,
           labels = "auto")
 plot_grid(myleg, exotp, ncol=1, nrow=2, rel_heights = c(0.05,1))
+}
 
-
-# RICHNESS
-ggplot(hf_exot, aes(x=totdist_percent, y=rich)) +
+# plot RICHNESS ~ HF*exotics 
+{
+ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
   geom_point(alpha=0.8, aes(color=propexotic)) +
   labs(x="Total Human Development (%)", y="Species Richness") +
   geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
-  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+  geom_smooth(data=veg_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
               method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
   scale_linetype_manual(values=c("dashed", "dotdash")) +
   scale_color_gradient(low="yellow", high="red", name="% Exotics") +
   theme_classic() +
   theme(legend.position = "top")
+}
 
-# stats
+# 3.1 stats richness ~ hf and exotics
 {
-  rich.poly # previous best
+  rich.poly2 # previous best
   # refit previous best w/ updated df
-  rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
+  rich.poly2a <- lmer(rich ~ poly(totdist_percent,2) + Protocol +
                        (1|UniqueID),
-                     data=hf_exot,
+                     data=veg_exot,
                      REML=F)
   rich.exot.only <- lmer(rich ~ propexotic + Protocol +
                         (1|UniqueID),
-                      data=hf_exot,
+                      data=veg_exot,
                       REML=F)
   rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2) + propexotic + Protocol +
                      (1|UniqueID),
-                   data=hf_exot,
+                   data=veg_exot,
                    REML=F)
   rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + Protocol +
                         (1|UniqueID),
-                      data=hf_exot,
+                      data=veg_exot,
                       REML=F)
   
-  AIC(rich.poly2, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
-  anova(rich.poly2, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  AIC(rich.poly2a, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  anova(rich.poly2a, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
   summary(rich.poly.exot.interaction)
   piecewiseSEM::rsquared(rich.poly.exot.interaction)
-  piecewiseSEM::rsquared(rich.poly2)
+  piecewiseSEM::rsquared(rich.poly2a)
   anova(rich.poly.exot.interaction, type="chisq")
 }
 
-
-# CSI
-ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
+# plot CSI ~ HF*exotics 
+{
+ggplot(veg_exot, aes(x=totdist_percent, y=CSI)) +
   geom_point(alpha=0.8, aes(color=propexotic)) +
   labs(x="Total Human Development (%)", y="CSI") +
   geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
-  geom_smooth(data=hf_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+  geom_smooth(data=veg_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
               method="lm",se=F, formula=y~poly(x,2), size=0.5, color=1) +  
   scale_linetype_manual(values=c("dashed", "dotdash")) +
   scale_color_gradient(low="yellow", high="red", name="% Exotics") +
   theme(legend.position = "top") 
+}
 
-# stats
+# 3.2. stats CSI ~ hf and exotics
 {
-  csi.poly # previous best
+  csi.poly1 # previous best
   # refit previous best w/ updated df
-  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + Protocol +
+  csi.poly1a <- lmer(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude +
                        (1|UniqueID),
-                     data=hf_exot,
+                     data=veg_exot,
                      REML=F)
-  csi.exot.only <- lmer(CSI ~ propexotic + Protocol +
+  csi.exot.only <- lmer(CSI ~ propexotic + Protocol + Latitude + Longitude +
                            (1|UniqueID),
-                         data=hf_exot,
+                         data=veg_exot,
                          REML=F)
-  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + propexotic + Protocol +
+  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + propexotic + Protocol + Latitude + Longitude +
                            (1|UniqueID),
-                         data=hf_exot,
+                         data=veg_exot,
                          REML=F)
-  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + Protocol +
+  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + Protocol + Latitude + Longitude +
                                        (1|UniqueID),
-                                     data=hf_exot,
+                                     data=veg_exot,
                                      REML=F)
   
-  AIC(csi.poly2, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
-  anova(csi.poly2, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  AIC(csi.poly1a, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  anova(csi.poly1a, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
   summary(csi.poly.exot.interaction)
   piecewiseSEM::rsquared(csi.poly.exot.interaction)
-  piecewiseSEM::rsquared(csi.poly2)
+  piecewiseSEM::rsquared(csi.poly1a)
   anova(csi.poly.exot.interaction, type="chisq")  
 }
 
-
-# now compare how plant comm sensitivity to HF varies across clim gradients
+# now compare how plant comm sensitivity to HF varies across clim gradients ####
 {
   # load ABMI climate data
   # clim vars - extracted from ABMI data; locations inaccurate
@@ -541,7 +568,7 @@ ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
 
 }
 
-# what are the most predictive variables of CSI_hf? use regression trees and random forest
+# what are the most predictive variables of CSI_hf? use regression trees and random forest ####
 {
   
   library(rpart); library(rpart.plot)
@@ -584,42 +611,81 @@ ggplot(hf_exot, aes(x=totdist_percent, y=CSI)) +
   
 }
 
-# ordinations of the highest and lowest disturbed sites
-veg_hf2 <- veg_hf %>% 
-  select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-head(veg_hf2)
-veg_hf2 <- veg_hf2 %>% 
+# ordinations of the highest and lowest disturbed sites ####
+veg_hf <- veg_pa %>% 
+  select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+head(veg_hf)
+veg_hf <- veg_hf %>% 
   spread(key=Species, value=PA) %>% 
-  gather(key=Species, value=PA, 6:ncol(.)) %>% 
+  gather(key=Species, value=PA, 8:ncol(.)) %>% 
   replace_na(list(PA=0)) %>% 
   spread(key=Species, value=PA) 
+hf_bin <- hf_tot
+hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
+head(hf_bin)
+hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
+                                                    meddist=median(totdist_percent))
 
-veg_hf2 <- left_join(veg_hf2, select(hf_tot, -totdist_percent), by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-veg_hf2 <- veg_hf2 %>% filter(HFbin==1 | HFbin==10) %>% select(NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+veg_hf <- left_join(veg_hf, 
+                     select(hf_bin, -totdist_percent), by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
 
+# veg_hf2 has most & least dist communities
+# veg_hf3 has most, least, and intermed dist communities
+veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
+  select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+sptokeep2 <- colSums(veg_hf2[,9:ncol(veg_hf2)]) %>% data.frame() 
+sptokeep2$Species <- rownames(sptokeep2)
+colnames(sptokeep2) <- c("Obs", "Species")
+sptokeep2 <-  filter(sptokeep2, Obs > 1)
+veg_hf2 <- veg_hf2 %>% 
+  gather(Species, PA, 9:ncol(.)) %>% 
+  filter(Species %in% sptokeep2$Species) %>% 
+  spread(Species, PA)
 veg_hf2[1:5,1:10]
 
+veg_hf3 <- veg_hf %>% filter(HFbin==1 | HFbin==8 | HFbin==10) %>% 
+  select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+sptokeep3 <- colSums(veg_hf3[,9:ncol(veg_hf3)]) %>% data.frame() 
+sptokeep3$Species <- rownames(sptokeep3)
+colnames(sptokeep3) <- c("Obs", "Species")
+sptokeep3 <-  filter(sptokeep3, Obs > 1)
+veg_hf3 <- veg_hf3 %>% 
+  gather(Species, PA, 9:ncol(.)) %>% 
+  filter(Species %in% sptokeep3$Species) %>% 
+  spread(Species, PA)
+veg_hf3[1:5,1:10]
+
 # distance matrix
-veg_d <- vegdist(veg_hf2[,7:ncol(veg_hf2)], method="jaccard", binary=T)
+library(vegan)
+veg_d2 <- vegdist(veg_hf2[,9:ncol(veg_hf2)], method="jaccard", binary=T)
+veg_d3 <- vegdist(veg_hf3[,9:ncol(veg_hf3)], method="jaccard", binary=T)
 
 # check for sig diffs among groups
-mrpp(veg_d, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
+mrpp(veg_d2, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
+adonis2(veg_d2 ~ as.factor(veg_hf2$HFbin))
+library(RVAideMemoire)
+library(ecodist)
 
-# run ordinations to compare stress across diff axis numbers
+pairwise.perm.manova(resp=veg_d3, fact=veg_hf3$HFbin, p.method="holm")
+mrpp(veg_d3, grouping=as.factor(veg_hf3$HFbin)) # sig diff between groups based on mean score
+
+# NMDS
 {
-  veg.nmds2 <- metaMDS(veg_d, k=2,trymax=100)
-  veg.nmds3 <- metaMDS(veg_d, k=3,trymax=100)
-  veg.nmds4 <- metaMDS(veg_d, k=4,trymax=100)
-  veg.nmds5 <- metaMDS(veg_d, k=5,trymax=100)
-  veg.nmds6 <- metaMDS(veg_d, k=6,trymax=100)
-  veg.nmds7 <- metaMDS(veg_d, k=7,trymax=100)
-  veg.nmds8 <- metaMDS(veg_d, k=8,trymax=100)
-  veg.nmds9 <- metaMDS(veg_d, k=9,trymax=100)
-  veg.nmds10 <- metaMDS(veg_d, k=10,trymax=100)
-  veg.nmds11 <- metaMDS(veg_d, k=11,trymax=100)
-  veg.nmds12 <- metaMDS(veg_d, k=12,trymax=100)
-  veg.nmds13 <- metaMDS(veg_d, k=13,trymax=100)
-  veg.nmds14 <- metaMDS(veg_d, k=14,trymax=100)
+# run ordinations to compare stress across diff axis numbers - VEG_D2
+{
+  veg.nmds2 <- metaMDS(veg_d2, k=2,trymax=100)
+  veg.nmds3 <- metaMDS(veg_d2, k=3,trymax=100)
+  veg.nmds4 <- metaMDS(veg_d2, k=4,trymax=100)
+  veg.nmds5 <- metaMDS(veg_d2, k=5,trymax=100)
+  veg.nmds6 <- metaMDS(veg_d2, k=6,trymax=100)
+  veg.nmds7 <- metaMDS(veg_d2, k=7,trymax=100)
+  veg.nmds8 <- metaMDS(veg_d2, k=8,trymax=100)
+  veg.nmds9 <- metaMDS(veg_d2, k=9,trymax=100)
+  veg.nmds10 <- metaMDS(veg_d2, k=10,trymax=100)
+  veg.nmds11 <- metaMDS(veg_d2, k=11,trymax=100)
+  veg.nmds12 <- metaMDS(veg_d2, k=12,trymax=100)
+  veg.nmds13 <- metaMDS(veg_d2, k=13,trymax=100)
+  veg.nmds14 <- metaMDS(veg_d2, k=14,trymax=100)
   
   data.frame(Dim=c(veg.nmds2$ndim,
                    veg.nmds3$ndim,
@@ -652,70 +718,318 @@ mrpp(veg_d, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based o
     annotate("text", x=2.5, y=c(.102,.052), label=c("stress=0.1", "stress=0.05"), color="red")
 }
 
-veg.nmds4 <- metaMDS(veg_hf2[,7:ncol(veg_hf2)], distance="jaccard", binary=T, k=4,trymax=100)
-
-# extract site scores and convert to df
-veg.scores <- data.frame(scores(veg.nmds4, "sites"))
-# add in protocol, site, year, 
-veg.scores$Protocol <- as.factor(veg_hf2$Protocol)
-veg.scores$Site <- veg_hf2$Site
-veg.scores$Year <- veg_hf2$Year
-veg.scores$NRNAME <- veg_hf2$NRNAME
-veg.scores$HFbin <- veg_hf2$HFbin
-head(veg.scores)
-
-ggplot(veg.scores, aes(x=NMDS1, y=NMDS2, 
-                       color=as.factor(HFbin), 
-                       shape=as.factor(HFbin))) +
-  geom_point(size=3) + 
-  stat_ellipse() +
-  scale_color_brewer(palette = "Dark2", name="HF Bin") +
-  scale_shape_manual(values=c(15,16), name="HF Bin") +
-  # geom_label(aes(label=Site)) +
-  theme_bw() +
-  guides(col=guide_legend(ncol=4)) +
-  theme(legend.position = "top", 
-        panel.grid=element_blank())
-
-ggplot(veg.scores, aes(x=NMDS3, y=NMDS4, color=as.factor(HFbin), shape=as.factor(HFbin))) +
-  geom_point(size=3) + 
-  stat_ellipse() +
-  scale_color_brewer(palette = "Dark2", name="HF Bin") +
-  scale_shape_manual(values=c(15,16), name="HF Bin") +
-  # geom_label(aes(label=Site)) +
-  theme_bw() +
-  guides(col=guide_legend(ncol=4)) +
-  theme(legend.position = "top", 
-        panel.grid=element_blank())
-
-spscores <- data.frame(scores(veg.nmds4, display="species"))
-
-spscores$Species <- rownames(spscores)
-
-impsp_5 <- bind_rows(top_n(spscores, 5, wt=NMDS1),
-                     top_n(spscores, -5, wt=NMDS1))
-
-spdriversp <- ggplot(data=impsp_5) +
-  geom_point(data=veg.scores, 
-             aes(x=NMDS1, y=NMDS2, 
-                 color=as.factor(HFbin), 
-                 shape=as.factor(HFbin)),
-             size=3) +
-  stat_ellipse(data=veg.scores, 
+# final model plus plotting - veg_df2
+{
+  
+  veg.nmds_final2 <- metaMDS(veg_hf2[,9:ncol(veg_hf2)], distance="jaccard", binary=T, k=5,trymax=100,
+                             maxit=500, sratmax=0.999999)
+  
+  # extract site scores and convert to df
+  veg.scores2 <- data.frame(scores(veg.nmds_final2, "sites"))
+  # add in protocol, site, year, 
+  veg.scores2$Protocol <- as.factor(veg_hf2$Protocol)
+  veg.scores2$Site <- veg_hf2$Site
+  veg.scores2$Year <- veg_hf2$Year
+  veg.scores2$NRNAME <- veg_hf2$NRNAME
+  veg.scores2$HFbin <- veg_hf2$HFbin
+  head(veg.scores2)
+  
+  ggplot(veg.scores2, aes(x=NMDS1, y=NMDS2, 
+                         color=as.factor(HFbin), 
+                         shape=as.factor(HFbin))) +
+    geom_point(size=3) + 
+    stat_ellipse() +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    # geom_label(aes(label=Site)) +
+    theme_bw() +
+    guides(col=guide_legend(ncol=4)) +
+    theme(legend.position = "top", 
+          panel.grid=element_blank())
+  
+  ggplot(veg.scores2, aes(x=NMDS1, y=NMDS4, 
+                         color=as.factor(HFbin), 
+                         shape=as.factor(HFbin))) +
+    geom_point(size=3) + 
+    stat_ellipse() +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    # geom_label(aes(label=Site)) +
+    theme_bw() +
+    guides(col=guide_legend(ncol=4)) +
+    theme(legend.position = "top", 
+          panel.grid=element_blank())
+  
+  spscores2 <- data.frame(scores(veg.nmds_final2, display="species"))
+  
+  spscores2$Species <- rownames(spscores2)
+  
+  impsp_5 <- bind_rows(top_n(spscores2, 5, wt=NMDS1),
+                       top_n(spscores2, -5, wt=NMDS1))
+  
+  spdriversp2 <- ggplot(data=impsp_5) +
+    geom_point(data=veg.scores2, 
                aes(x=NMDS1, y=NMDS2, 
-                   color=as.factor(HFbin))) +
-  scale_color_brewer(palette = "Dark2", name="HF Bin") +
-  scale_shape_manual(values=c(15,16), name="HF Bin") +
-  geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+                   color=as.factor(HFbin), 
+                   shape=as.factor(HFbin)),
+               size=3) +
+    stat_ellipse(data=veg.scores2, 
+                 aes(x=NMDS1, y=NMDS2, 
+                     color=as.factor(HFbin))) +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+                 color=1,
+                 arrow=arrow(length=unit(0.3, "cm"))) +
+    geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+                     box.padding=1, size=3.5) +
+    theme(legend.position="top")
+  spdriversp2
+  
+  # ggsave(plot=spdriversp, 
+  #        filename="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Ordination of HF bin 1 vs 10.jpeg",
+  #        height=18,
+  #        width=18,
+  #        units="cm")
+  
+}
+
+# run ordinations to compare stress across diff axis numbers - VEG_D3
+{
+  veg.nmds2 <- metaMDS(veg_d3, k=2,trymax=100)
+  veg.nmds3 <- metaMDS(veg_d3, k=3,trymax=100)
+  veg.nmds4 <- metaMDS(veg_d3, k=4,trymax=100)
+  veg.nmds5 <- metaMDS(veg_d3, k=5,trymax=100)
+  veg.nmds6 <- metaMDS(veg_d3, k=6,trymax=100)
+  veg.nmds7 <- metaMDS(veg_d3, k=7,trymax=100)
+  veg.nmds8 <- metaMDS(veg_d3, k=8,trymax=100)
+  veg.nmds9 <- metaMDS(veg_d3, k=9,trymax=100)
+  veg.nmds10 <- metaMDS(veg_d3, k=10,trymax=100)
+  veg.nmds11 <- metaMDS(veg_d3, k=11,trymax=100)
+  veg.nmds12 <- metaMDS(veg_d3, k=12,trymax=100)
+  veg.nmds13 <- metaMDS(veg_d3, k=13,trymax=100)
+  veg.nmds14 <- metaMDS(veg_d3, k=14,trymax=100)
+  
+  data.frame(Dim=c(veg.nmds2$ndim,
+                   veg.nmds3$ndim,
+                   veg.nmds4$ndim,
+                   veg.nmds5$ndim,
+                   veg.nmds6$ndim,
+                   veg.nmds7$ndim,
+                   veg.nmds8$ndim,
+                   veg.nmds9$ndim,
+                   veg.nmds10$ndim,
+                   veg.nmds11$ndim,
+                   veg.nmds12$ndim,
+                   veg.nmds13$ndim,
+                   veg.nmds14$ndim),
+             Stress=c(veg.nmds2$stress,
+                      veg.nmds3$stress,
+                      veg.nmds4$stress,
+                      veg.nmds5$stress,
+                      veg.nmds6$stress,
+                      veg.nmds7$stress,
+                      veg.nmds8$stress,
+                      veg.nmds9$stress,
+                      veg.nmds10$stress,
+                      veg.nmds11$stress,
+                      veg.nmds12$stress,
+                      veg.nmds13$stress,
+                      veg.nmds14$stress) ) %>%
+    ggplot(aes(x=Dim,y=Stress)) + geom_point() + geom_line() + scale_x_continuous(breaks=c(1:15)) +
+    geom_hline(yintercept = c(0.1,0.05), color="red") +
+    annotate("text", x=2.5, y=c(.102,.052), label=c("stress=0.1", "stress=0.05"), color="red")
+}
+
+# final model plus plotting - veg_df3
+{
+  # no convergence with 4 axes must try 5
+  veg.nmds_final3 <- metaMDS(veg_hf3[,9:ncol(veg_hf3)], distance="jaccard", binary=T, k=4,trymax=100,
+                             maxit=600, sratmax=0.9999999, 
+                             sfgrmin = 1e-8)
+  veg.nmds_final3 <- metaMDS(veg_hf3[,9:ncol(veg_hf3)], distance="jaccard", binary=T, k=5,trymax=100,
+                             maxit=500, sratmax=0.999999)
+  
+  # extract site scores and convert to df
+  veg.scores3 <- data.frame(scores(veg.nmds_final3, "sites"))
+  # add in protocol, site, year, 
+  veg.scores3$Protocol <- as.factor(veg_hf3$Protocol)
+  veg.scores3$Site <- veg_hf3$Site
+  veg.scores3$Year <- veg_hf3$Year
+  veg.scores3$NRNAME <- veg_hf3$NRNAME
+  veg.scores3$HFbin <- veg_hf3$HFbin
+  head(veg.scores3)
+  
+  ggplot(veg.scores3, aes(x=NMDS1, y=NMDS2, 
+                          color=as.factor(HFbin), 
+                          shape=as.factor(HFbin))) +
+    geom_point(size=3) + 
+    stat_ellipse() +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    # geom_label(aes(label=Site)) +
+    theme_bw() +
+    guides(col=guide_legend(ncol=4)) +
+    theme(legend.position = "top", 
+          panel.grid=element_blank())
+  
+  ggplot(veg.scores3, aes(x=NMDS1, y=NMDS4, 
+                          color=as.factor(HFbin), 
+                          shape=as.factor(HFbin))) +
+    geom_point(size=3) + 
+    stat_ellipse() +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    theme_bw() +
+    guides(col=guide_legend(ncol=4)) +
+    theme(legend.position = "top", 
+          panel.grid=element_blank())
+  
+  spscores3 <- data.frame(scores(veg.nmds_final3, display="species"))
+  
+  spscores3$Species <- rownames(spscores3)
+  
+  impsp_5b <- bind_rows(top_n(spscores3, 5, wt=NMDS1),
+                       top_n(spscores3, -5, wt=NMDS1))
+  
+  spdriversp3 <- ggplot(data=impsp_5b) +
+    geom_point(data=veg.scores3, 
+               aes(x=NMDS1, y=NMDS2, 
+                   color=as.factor(HFbin), 
+                   shape=as.factor(HFbin)),
+               size=3) +
+    stat_ellipse(data=veg.scores3, 
+                 aes(x=NMDS1, y=NMDS2, 
+                     color=as.factor(HFbin))) +
+    scale_color_brewer(palette = "Dark2", name="HF Bin") +
+    scale_shape_manual(values=c(15,16), name="HF Bin") +
+    geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+                 color=1,
+                 arrow=arrow(length=unit(0.3, "cm"))) +
+    geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+                     box.padding=1, size=3.5) +
+    theme(legend.position="top")
+  spdriversp3
+  
+  # ggsave(plot=spdriversp, 
+  #        filename="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Ordination of HF bin 1 vs 10.jpeg",
+  #        height=18,
+  #        width=18,
+  #        units="cm")
+  
+}
+}
+
+# PCA
+{
+veg_hf2_pca <- rda(veg_hf2[,9:ncol(veg_hf2)])
+data.frame(summary(veg_hf2_pca)$cont)[,1:3] # first 3 PC axes explain 25% of var with UNSCALED data
+pca2 <- data.frame(veg_hf2[,1:8],
+                   summary(veg_hf2_pca)$sites[,1:3])
+pc12 <- ggplot(pca2, aes(x=PC1, y=PC2, color=as.factor(HFbin))) +
+  geom_point() +
+  stat_ellipse() +
+  theme(legend.position = "top")
+pc13 <- ggplot(pca2, aes(x=PC1, y=PC3, color=as.factor(HFbin))) +
+  geom_point() +
+  stat_ellipse() +
+  theme(legend.position = "top")
+plot_grid(pc12, pc13, ncol=2, nrow=1)
+plotly::plot_ly(data=pca2, 
+                x=~PC1, y=~PC2, z=~PC3, color=~as.factor(HFbin), alpha=0.5,
+                colors=c("red", "darkorchid2", "blue"),
+                stroke=~as.factor(HFbin),
+                type="scatter3d", mode="markers")
+
+
+
+veg_hf3_pca <- rda(veg_hf3[,9:ncol(veg_hf3)], scale=T)
+data.frame(summary(veg_hf3_pca)$cont)[,1:3] # first 3 PC axes explain about 25% of var with UNSCALED data
+pca3 <- data.frame(veg_hf3[,1:8],
+                   summary(veg_hf3_pca)$sites[,1:3])
+pc12 <- ggplot(pca3, aes(x=PC1, y=PC2, color=as.factor(HFbin))) +
+  geom_point() +
+  stat_ellipse() +
+  theme(legend.position = "top")
+pc13 <- ggplot(pca3, aes(x=PC1, y=PC3, color=as.factor(HFbin))) +
+  geom_point() +
+  stat_ellipse() +
+  theme(legend.position = "top")
+plot_grid(pc12, pc13, ncol=2, nrow=1)
+
+plotly::plot_ly(data=filter(pca3), 
+                x=~PC3, y=~PC1, z=~PC2, color=~as.factor(HFbin), alpha=0.7,
+                colors=c("firebrick3", "purple3", "blue"),
+                stroke=~as.factor(HFbin),
+                type="scatter3d", mode="markers")
+
+pca3_sp <- data.frame(summary(veg_hf3_pca)$species[,1:3])
+pca3_sp$Species <- rownames(pca3_sp)
+head(pca3_sp)
+
+impsp3 <- bind_rows(top_n(pca3_sp, n=3, wt=PC1),
+          top_n(pca3_sp, n=-3, wt=PC1),
+          top_n(pca3_sp, n=3, wt=PC2),
+          top_n(pca3_sp, n=-3, wt=PC2),
+          top_n(pca3_sp, n=3, wt=PC3),
+          top_n(pca3_sp, n=-3, wt=PC3)) %>% distinct()
+dim(impsp3)
+library(ggrepel)
+ggplot(impsp3) +
+  geom_point(data=pca3, aes(x=PC1, y=PC2, color=as.factor(pca3$HFbin))) +
+  stat_ellipse(data=pca3, aes(x=PC1, y=PC2, color=as.factor(pca3$HFbin)), level = 0.9) +
+  geom_segment(aes(x=0,y=0,xend=PC1,yend=PC2), 
                color=1,
                arrow=arrow(length=unit(0.3, "cm"))) +
-  geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+  geom_label_repel(aes(x=PC1,y=PC2,label=Species),
                    box.padding=1, size=3.5) +
-  theme(legend.position="top")
+  theme(legend.position = "top")
+}
 
-ggsave(plot=spdriversp, 
-       filename="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Ordination of HF bin 1 vs 10.jpeg",
-       height=18,
-       width=18,
-       units="cm")
-spdriversp
+# dendrogram and clustering
+{
+library(factoextra)
+library(fpc)
+# k means clustering
+km.veg3 <- eclust(veg_hf3[,9:ncol(veg_hf3)], "kmeans", k = 3, graph = FALSE)
+km.veg3$cluster %>% head()
+veg_hf3[1:5, 1:8]
+
+# Visualize
+fviz_cluster(km.veg3, data = veg_d3,
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+# external cluster validation
+km3_stats <- fpc::cluster.stats(d=dist(veg_hf3[,9:ncol(veg_hf3)]),
+                                        cluster=as.numeric(as.factor(veg_hf3$HFbin)),
+                                        alt.clustering=km.veg3$cluster)
+# Corrected Rand index
+km3_stats$corrected.rand # ranges from -1 to 1 w/ -1 being bad clustering and 1 being perfect
+# Meila's VI
+km3_stats$vi
+
+# Compute hierarchical clustering and cut into 3 clusters
+hclust.veg3 <- eclust(veg_hf3[,9:ncol(veg_hf3)], "hclust", k = 3, graph = FALSE)
+# Visualize
+fviz_dend(hclust.veg3, rect = TRUE, cex = 0.5,
+          k_colors = c("red", "purple", "blue"))
+
+hclust3_stats <- fpc::cluster.stats(d=dist(veg_hf3[,9:ncol(veg_hf3)]),
+                                cluster=as.numeric(as.factor(veg_hf3$HFbin)),
+                                alt.clustering=hclust.veg3$cluster)
+# Corrected Rand index
+hclust3_stats$corrected.rand # ranges from -1 to 1 w/ -1 being bad clustering and 1 being perfect
+# Meila's VI
+hclust3_stats$vi
+
+# PAM clustering and cut into 3 clusters
+pam.veg3 <- eclust(veg_hf3[,9:ncol(veg_hf3)], "pam", k = 3, graph = FALSE)
+pam3_stats <- fpc::cluster.stats(d=dist(veg_hf3[,9:ncol(veg_hf3)]),
+                                    cluster=as.numeric(as.factor(veg_hf3$HFbin)),
+                                    alt.clustering=pam.veg3$cluster)
+# Corrected Rand index
+pam3_stats$corrected.rand # ranges from -1 to 1 w/ -1 being bad clustering and 1 being perfect
+# Meila's VI
+pam3_stats$vi
+}

@@ -355,6 +355,7 @@ library(tidyverse)
 
 veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
 head(veg_pa)
+
 }
 
 ##### HF Data Cleaning #####
@@ -1019,7 +1020,7 @@ hf_alb_wetlands <- hf_alb_wetlands %>% rowwise() %>%
   select(NRNAME, NSRNAME, Protocol, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_percent) 
 }
 
-#### make veg and HF data sets compatible; add in sites with 0 hf from veg df
+#### make veg and HF data sets compatible; add in sites with 0 hf from veg df ####
 {
   vegsites <- select(veg_pa, -Species, -PA) %>% distinct()
   hfsites <- select(hf_alb_wetlands, -FEATURE_TY, -Area_percent, -HFCategory, -NSRNAME) %>% distinct()
@@ -1066,7 +1067,7 @@ hf_alb_wetlands <- hf_alb_wetlands %>% rowwise() %>%
     mutate(WSite=ifelse(Protocol=="Wetland", paste("W",Site,sep=""), Site)) %>% 
     mutate(WSite=str_replace(WSite, "WOG", "OGW")) 
   veg_pa <- veg_pa %>% select(NRNAME, Protocol, WetlandType, WSite, Site, Year, Species, PA)
-}
+
 
 # want 0 non-overlapping rows for both anti-joins
 anti_join(select(hf_alb_wetlands, NRNAME, Protocol, WetlandType, WSite, Site, Year), 
@@ -1079,3 +1080,63 @@ anti_join(select(veg_pa, NRNAME, Protocol, WetlandType, WSite, Site, Year),
 # write.csv(x=veg_pa, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv", row.names = F)
 # hf
 ## write.csv(x=hf_alb_wetlands, file="/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF.csv", row.names=F)
+}
+
+# add in lat/long coordinates ####
+{
+# create temp site ID
+# NOTE: removing some site ID info - is this valid?
+
+siteids <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/raw/Site IDs/Terrestrial_Wetland_Sites_all_NRs.csv")
+veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned.csv")
+
+siteids <- siteids %>% 
+  select(-Year) %>% 
+  distinct() %>% 
+  mutate(ABMI.Site=str_replace(ABMI.Site, "W-", "W")) %>% 
+  mutate(ABMI.Site=str_replace(ABMI.Site, "OGW", "OGW-"))
+
+veg_pa <- veg_pa %>% 
+  mutate(tmpSite = str_remove(WSite, "B"))
+
+vegog <- veg_pa %>%   
+  filter(str_detect(WSite, "OG")) %>% 
+  mutate(tmpSite = str_remove(WSite, "-1$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-21$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-2$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-3$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-4$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-5$")) %>%
+  mutate(tmpSite = str_remove(tmpSite, "-6$"))
+
+veg_pa <- bind_rows(filter(veg_pa, str_detect(WSite, "OG")==FALSE),
+                 vegog)
+veg_pa <- left_join(veg_pa,
+          select(siteids, NRNAME, Protocol, ABMI.Site, Latitude, Longitude),
+          by=c("NRNAME", "Protocol", "tmpSite"="ABMI.Site")) %>% 
+  select(-tmpSite) %>% 
+  select(Latitude, Longitude, NRNAME, Protocol, WetlandType, WSite, Site, Year, Species, PA)
+
+veg_pa %>% distinct(Latitude, Longitude, Protocol, Site, WSite) %>%  
+  group_by(Latitude, Longitude) %>% 
+  tally() %>% 
+  filter(n>1) %>% 
+  arrange(desc(n)) %>% 
+  head() %>% 
+  View()
+
+veg_pa %>% distinct(Latitude, Longitude, Protocol, Site, WSite, Year) %>% 
+  filter(Latitude<55 &
+           Latitude>54.976) # note 3-6 diff sites must be assigned same coords
+# write.csv(x=veg_pa,
+#           file="data/cleaned/ABMI veg cleaned_latlong.csv",
+#           row.names = F)
+
+hf <- read.csv("data/cleaned/Alb wetlands HF.csv")
+hf <- left_join(hf,
+          distinct(veg_pa, Protocol, Site, Year, Latitude, Longitude)) %>% 
+  select(Latitude, Longitude, everything())
+# write.csv(x = hf,
+#           file="data/cleaned/Alb wetlands HF_latlong.csv",
+#           row.names = F)
+}
