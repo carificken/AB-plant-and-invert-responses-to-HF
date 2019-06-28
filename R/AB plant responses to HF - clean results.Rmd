@@ -3,9 +3,9 @@ title: "AB plant respones to HF"
 author: "Cari D. Ficken"
 date: "`r Sys.Date()`"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -30,15 +30,15 @@ _NOTE: I have by necessity altered some site IDs to join them to Lat/Long coordi
 
 ```{r load data}
 # load veg data
-veg_pa <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
+veg_pa <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
 # load HF data 
-hf <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF_latlong.csv") 
+hf <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF_latlong.csv") 
 
 hf_tot <- hf %>% group_by(Latitude, Longitude,Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
 ```
 
 ```{r load SSI values}
-  sp_SSI <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
   colnames(sp_SSI) <- c("Species", "CV")
 ```
 
@@ -300,7 +300,7 @@ Communities at high and low develoment intensities both are composed of species 
 # 4. How does the proportion of exotic species contribute to these patterns?
 
 ```{r load exotics data}
-  exotics <- read.csv("/Users/cari/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/exotic_plants_ab.csv", sep=";")
+  exotics <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/exotic_plants_ab.csv", sep=";")
   veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
 
   veg_exot <- veg_exot %>% 
