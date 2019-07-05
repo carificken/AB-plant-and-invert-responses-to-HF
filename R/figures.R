@@ -242,7 +242,8 @@ rm(list=ls())
     veg.scores2$Year <- veg_hf2$Year
     veg.scores2$NRNAME <- veg_hf2$NRNAME
     veg.scores2$HFbin <- veg_hf2$HFbin
-    
+    veg.scores2$HFbin <- recode(veg.scores2$HFbin, "1"="Low", "10"="High")
+
     spscores2 <- data.frame(scores(veg.nmds_final2, display="species"))
     spscores2$Species <- rownames(spscores2)
     
@@ -254,15 +255,15 @@ rm(list=ls())
     ggplot(data=impsp_5) +
       geom_point(data=veg.scores2, 
                  aes(x=NMDS1, y=NMDS2, 
-                     color=as.factor(HFbin), 
-                     shape=as.factor(HFbin)),
+                     color=as.factor(HFbin),
+                     shape=as.factor(Protocol)),
                  size=3) +
       stat_ellipse(data=veg.scores2, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin))) +
-      scale_color_manual(values=c("#1b9e77", "#d95f02"), name="HF Bin") +
-      scale_shape_manual(values=c(15,16), name="HF Bin") +
-      geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+      scale_color_manual(values=c("#1b9e77", "#d95f02"), name="Dist.") +
+      scale_shape_manual(values=c(1,16), name="Protocol") +
+      geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2),
                    color=1,
                    arrow=arrow(length=unit(0.3, "cm"))) +
       geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
@@ -286,6 +287,8 @@ rm(list=ls())
     veg.scores3$Year <- veg_hf3$Year
     veg.scores3$NRNAME <- veg_hf3$NRNAME
     veg.scores3$HFbin <- veg_hf3$HFbin
+    veg.scores3$HFbin <- recode(veg.scores3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+    
 
     spscores3 <- data.frame(scores(veg.nmds_final3, display="species"))
     spscores3$Species <- rownames(spscores3)
@@ -297,13 +300,13 @@ rm(list=ls())
       geom_point(data=veg.scores3, 
                  aes(x=NMDS1, y=NMDS2, 
                      color=as.factor(HFbin), 
-                     shape=as.factor(HFbin)),
+                     shape=as.factor(Protocol)),
                  size=3) +
       stat_ellipse(data=veg.scores3, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin))) +
-      scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="HF Bin") +
-      scale_shape_manual(values=c(15:17), name="HF Bin") +
+      scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="Dist.") +
+      scale_shape_manual(values=c(1,16), name="Protocol") +
       geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
                    color=1,
                    arrow=arrow(length=unit(0.3, "cm"))) +
@@ -313,3 +316,18 @@ rm(list=ls())
   }
 }
 
+# 6. HF across bins
+{
+  hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
+  hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
+
+  
+  hf_bin3 <- hf_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
+  hf_bin3$UniqueID <- paste(hf_bin3$Protocol, hf_bin3$Site, sep="_")
+  hf_bin3$HFbin <- recode(hf_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+  hf_bin3$HFbin <- factor(hf_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
+  
+  ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="Human Development (%)")
+}
