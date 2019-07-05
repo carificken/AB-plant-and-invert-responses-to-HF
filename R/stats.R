@@ -64,7 +64,7 @@ rm(list=ls())
   
 }
 
-# 0. test for spatial autocorrelation - i 
+# 0. test for spatial autocorrelation - Moran's I
 {
   # richness w/ ape::Moran.I
   {
@@ -100,51 +100,57 @@ rm(list=ls())
   # should HF be linear or quad? and does ran ef variance differ from zero?
   rich.linear <- lmer(rich ~ totdist_percent + 
                         Protocol + 
-                        Latitude + Longitude + 
                         (1|Year) + (1|UniqueID), 
                       data=spR, REML=F)
   rich.poly <- lmer(rich ~ poly(totdist_percent,2) + 
                       Protocol + 
-                      Latitude + Longitude +  
                       (1|Year) + (1|UniqueID), 
                     data=spR, REML=F)
   summary(rich.linear) # RE of unique site ID should be kept
   summary(rich.poly) # RE of unique site ID should be kept
   AIC(rich.linear, rich.poly) # poly is better
   
-  # anova(lme(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
-  #           random=~1|UniqueID,
-  #           data=spR), type="marginal")
+  piecewiseSEM::rsquared(rich.poly) # best model
   
-  rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + 
-                       Protocol + 
-                       Latitude + Longitude +
-                       (1|Year) + (1|UniqueID), 
-                     data=spR, REML=F)
-  rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + 
-                       Protocol +
-                       (1|Year) + (1|UniqueID), 
-                     data=spR, REML=F)
-  rich.poly3 <- lmer(rich ~ poly(totdist_percent,2) + 
-                       (1|Year) + (1|UniqueID), 
-                     data=spR, REML=F)
+  Moran.I(residuals(rich.poly), rich.d.inv) # I = 0.011
   
-  AIC(rich.poly, rich.poly1, rich.poly2, rich.poly3)  
-  summary(rich.poly2) # latitudinal climate variables not important for richness
-  piecewiseSEM::rsquared(rich.poly2)
+  # old analyses - ignore
+  {
+    # anova(lme(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
+    #           random=~1|UniqueID,
+    #           data=spR), type="marginal")
+    # 
+    # rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + 
+    #                      Protocol + 
+    #                      Latitude + Longitude +
+    #                      (1|Year) + (1|UniqueID), 
+    #                    data=spR, REML=F)
+    # rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + 
+    #                      Protocol +
+    #                      (1|Year) + (1|UniqueID), 
+    #                    data=spR, REML=F)
+    # rich.poly3 <- lmer(rich ~ poly(totdist_percent,2) + 
+    #                      (1|Year) + (1|UniqueID), 
+    #                    data=spR, REML=F)
+    # 
+    # AIC(rich.poly, rich.poly1, rich.poly2, rich.poly3)  
+    # summary(rich.poly2) # latitudinal climate variables not important for richness
+    # piecewiseSEM::rsquared(rich.poly2)
+    # 
+    # Moran.I(residuals(rich.poly2), rich.d.inv)
+  }
+
 }
 
 # 2. How does CSI vary with HF
 {
   csi.linear <- lmer(CSI ~ totdist_percent + 
                        Protocol + 
-                       Latitude + Longitude + 
                        (1|Year) + (1|UniqueID), 
                      data=veg_CSI_HF,
                      REML = F)
   csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + 
                      Protocol + 
-                     Latitude + Longitude +
                      (1|Year) + (1|UniqueID), 
                    data=veg_CSI_HF,
                    REML = F)
@@ -152,39 +158,48 @@ rm(list=ls())
   summary(csi.poly) # variance on group RE indistinguishable from zero
   AIC(csi.linear, csi.poly) # csi poly
   
-  # library(nlme)
-  # anova(lme(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
-  #           random=~1|UniqueID,
-  #           data=veg_CSI_HF), type="marginal")
+  piecewiseSEM::rsquared(csi.poly) # best model
   
-  csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + 
-                      Protocol + 
-                      Latitude + Longitude +
-                      (1|Year) + (1|UniqueID), 
-                    data=veg_CSI_HF,
-                    REML = F)
-  csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + 
-                      Protocol +
-                      (1|Year) + (1|UniqueID), 
-                    data=veg_CSI_HF,
-                    REML = F)
-  csi.poly3 <- lmer(CSI ~ poly(totdist_percent,2) +
-                      (1|Year) + (1|UniqueID), 
-                    data=veg_CSI_HF,
-                    REML = F)
+  Moran.I(residuals(csi.poly), rich.d.inv) # I = 0.006
   
-  AIC(csi.poly, csi.poly1, csi.poly2, csi.poly3)
+  # old analyses - ignore
+  {
+    # library(nlme)
+    # anova(lme(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
+    #           random=~1|UniqueID,
+    #           data=veg_CSI_HF), type="marginal")
+    # 
+    # csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + 
+    #                     Protocol + 
+    #                     Latitude + Longitude +
+    #                     (1|Year) + (1|UniqueID), 
+    #                   data=veg_CSI_HF,
+    #                   REML = F)
+    # csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + 
+    #                     Protocol +
+    #                     (1|Year) + (1|UniqueID), 
+    #                   data=veg_CSI_HF,
+    #                   REML = F)
+    # csi.poly3 <- lmer(CSI ~ poly(totdist_percent,2) +
+    #                     (1|Year) + (1|UniqueID), 
+    #                   data=veg_CSI_HF,
+    #                   REML = F)
+    # 
+    # AIC(csi.poly, csi.poly1, csi.poly2, csi.poly3)
+    # 
+    # summary(csi.poly1) # lat/long coords are important
+    # piecewiseSEM::rsquared(csi.poly1)
+    
+  }
   
-  summary(csi.poly1) # lat/long coords are important
-  piecewiseSEM::rsquared(csi.poly1)
-  
+
 }
 
 # 3. Does including % exotics improve fit of richness model (from 1 above)
 {
-  rich.poly2 # previous best
-  # refit previous best w/ updated df
-  rich.poly2a <- lmer(rich ~ poly(totdist_percent,2) + 
+  rich.poly # previous best
+  # refit previous best w/ updated df that includes exotic
+  rich.polya <- lmer(rich ~ poly(totdist_percent,2) + 
                         Protocol +
                         (1|Year) + (1|UniqueID), 
                       data=veg_exot,
@@ -206,50 +221,56 @@ rm(list=ls())
                                      data=veg_exot,
                                      REML=F)
   
-  AIC(rich.poly2a, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
-  anova(rich.poly2a, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  AIC(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
+  anova(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
   summary(rich.poly.exot.interaction)
-  piecewiseSEM::rsquared(rich.poly.exot.interaction)
-  piecewiseSEM::rsquared(rich.poly2a)
-  anova(rich.poly.exot.interaction, type="chisq")
+  piecewiseSEM::rsquared(rich.polya)
+
+  piecewiseSEM::rsquared(rich.poly.exot.interaction) # best model
+  
+  Moran.I(residuals(rich.poly.exot.interaction), rich.d.inv) # I=0.003
 }
 
 # 4. does including % exotics improve fit of CSI model (from 2 above)
 {
-  csi.poly1 # previous best
+  csi.poly # previous best
   # refit previous best w/ updated df
-  csi.poly1a <- lmer(CSI ~ poly(totdist_percent,2) + 
+  csi.polya <- lmer(CSI ~ poly(totdist_percent,2) + 
                        Protocol + 
-                       Latitude + Longitude +
+                       # Latitude + Longitude +
                        (1|Year) + (1|UniqueID), 
                      data=veg_exot,
                      REML=F)
   csi.exot.only <- lmer(CSI ~ propexotic +
                           Protocol +
-                          Latitude + Longitude +
+                          # Latitude + Longitude +
                           (1|Year) + (1|UniqueID), 
                         data=veg_exot,
                         REML=F)
   csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + 
                           propexotic + 
                           Protocol + 
-                          Latitude + Longitude +
+                          # Latitude + Longitude +
                           (1|Year) + (1|UniqueID), 
                         data=veg_exot,
                         REML=F)
   csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + 
                                       Protocol + 
-                                      Latitude + Longitude +
+                                      # Latitude + Longitude +
                                       (1|Year) + (1|UniqueID), 
                                     data=veg_exot,
                                     REML=F)
   
-  AIC(csi.poly1a, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
-  anova(csi.poly1a, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  AIC(csi.polya, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
+  anova(csi.polya, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
   summary(csi.poly.exot.interaction)
-  piecewiseSEM::rsquared(csi.poly.exot.interaction)
+  
   piecewiseSEM::rsquared(csi.poly1a)
+  
+  piecewiseSEM::rsquared(csi.poly.exot.interaction) # best model
   anova(csi.poly.exot.interaction, type="chisq")  
+  
+  Moran.I(residuals(csi.poly.exot.interaction), rich.d.inv) # I=0.006 
 }
 
 # 5. permanovas of multivariate NMDS's
@@ -268,12 +289,15 @@ rm(list=ls())
         spread(key=Species, value=PA) 
       hf_bin <- hf_tot
       hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
+      
+      # disturbance levels of each bin
       hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
                                                           meddist=median(totdist_percent))
       veg_hf <- left_join(veg_hf, 
                           select(hf_bin, -totdist_percent), 
                           by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
       
+
       # veg_hf2 has most & least dist communities
       veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
         select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
@@ -307,15 +331,49 @@ rm(list=ls())
     {
       # check for sig diffs among 2 groups
       mrpp(veg_d2, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
-      adonis2(veg_d2 ~ as.factor(veg_hf2$HFbin))
+      
+      adonis2(veg_d2 ~ as.factor(veg_hf2$HFbin) + as.factor(veg_hf2$Protocol),
+              by="margin") # both significant
       
       # check for sig diffs among 3 groups
       library(RVAideMemoire)
       library(ecodist)
+      
+      adonis2(veg_d3 ~ as.factor(veg_hf3$HFbin) + as.factor(veg_hf3$Protocol),
+              by="margin") # both significant
       
       pairwise.perm.manova(resp=veg_d3, fact=veg_hf3$HFbin, p.method="holm")
       mrpp(veg_d3, grouping=as.factor(veg_hf3$HFbin)) # sig diff between groups based on mean score
       
     }
   }
+}
+
+# 6. comparison of mean disturbance across low, med, high bins
+{
+  
+  # disturbance levels of each bin
+  hf_bin %>% 
+    group_by(as.factor(HFbin)) %>% 
+    summarize(meandist=mean(totdist_percent),
+              meddist=median(totdist_percent))
+  
+  hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
+  hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
+  summary(lmer(totdist_percent ~ as.factor(HFbin) + 
+         Protocol + (1|Year) + (1|UniqueID), 
+       data=hf_bin2, REML=F)) # sig effect of HF bin
+  
+  hf_bin3 <- hf_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
+  hf_bin3$UniqueID <- paste(hf_bin3$Protocol, hf_bin3$Site, sep="_")
+  hf_bin3$HFbin <- recode(hf_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+  summary(lmer(totdist_percent ~ HFbin + 
+                 Protocol + (1|Year) + (1|UniqueID), 
+               data=hf_bin3, REML=F)) # both bins 8 and 1 differ from 1
+  
+  ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="Human Development (%)")
+  
+  
 }
