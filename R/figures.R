@@ -359,8 +359,8 @@ rm(list=ls())
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Human Development (%)")
   
-  ggsave(plot=fig6, 
-         filename="results/figs/fig6.jpeg",
-         width=12, height=10, units="cm")
+  # ggsave(plot=fig6, 
+  #        filename="results/figs/fig6.jpeg",
+  #        width=12, height=10, units="cm")
   
 }
