@@ -65,7 +65,7 @@ rm(list=ls())
 
 # 1. sp richness vs HF (i.e. IDH) ####
 {
-  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+  fig1 <- ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5, color="grey70") + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
@@ -75,19 +75,30 @@ rm(list=ls())
     theme_classic() +
     theme(legend.position = "top")
   
+  # ggsave(plot=fig1,
+  #        filename="results/figs/fig1.jpeg",
+  #        width=10, height=8, units="cm")
+  
 }
 
 # 2 CSI vs. HF (multiple plots) ####
 {
   # black and white
-  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
-    ggtitle("Protocol") +
+  fig2 <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
-    geom_point(alpha=0.5) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
-    facet_wrap(~Protocol) +
+    geom_point(alpha=0.5, color="grey70") + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
-    theme(legend.position = "none")
+    theme(legend.position = "top")
+  
+  # ggsave(plot=fig2,
+  #        filename="results/figs/fig2.jpeg",
+  #        width=10, height=8, units="cm")
+  
+
   
   # colored and faceted by protocol
   ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
@@ -155,7 +166,7 @@ rm(list=ls())
 
 # 3. rich vs HF x Exotics ####
 {
-  ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
+  fig3 <- ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
     geom_point(alpha=0.8, aes(color=propexotic)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
@@ -165,11 +176,16 @@ rm(list=ls())
     scale_color_gradient(low="yellow", high="red", name="% Exotics") +
     theme_classic() +
     theme(legend.position = "top")
+  
+  # ggsave(plot=fig3,
+  #        filename="results/figs/fig3.jpeg",
+  #        width=10, height=8, units="cm")
+  
 }
 
 # 4. CSI vs HF x Exotics ####
 {
-  ggplot(veg_exot, aes(x=totdist_percent, y=CSI)) +
+  fig4 <- ggplot(veg_exot, aes(x=totdist_percent, y=CSI)) +
     geom_point(alpha=0.8, aes(color=propexotic)) +
     labs(x="Total Human Development (%)", y="CSI") +
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
@@ -178,6 +194,11 @@ rm(list=ls())
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     scale_color_gradient(low="yellow", high="red", name="% Exotics") +
     theme(legend.position = "top") 
+  
+  # ggsave(plot=fig4,
+  #        filename="results/figs/fig4.jpeg",
+  #        width=10, height=8, units="cm")
+  
 }
 
 # 5. NMDS ordinations ####
@@ -252,7 +273,7 @@ rm(list=ls())
                          top_n(spscores2, -5, wt=NMDS1))
     
     # note 5 axes; no convergence
-    ggplot(data=impsp_5) +
+    nmds2grps <- ggplot(data=impsp_5) +
       geom_point(data=veg.scores2, 
                  aes(x=NMDS1, y=NMDS2, 
                      color=as.factor(HFbin),
@@ -263,12 +284,16 @@ rm(list=ls())
                        color=as.factor(HFbin))) +
       scale_color_manual(values=c("#1b9e77", "#d95f02"), name="Dist.") +
       scale_shape_manual(values=c(1,16), name="Protocol") +
-      geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2),
-                   color=1,
-                   arrow=arrow(length=unit(0.3, "cm"))) +
-      geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
-                       box.padding=1, size=3.5) +
+      # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2),
+      #              color=1,
+      #              arrow=arrow(length=unit(0.3, "cm"))) +
+      # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+      #                  box.padding=1, size=3.5) +
       theme(legend.position="top")
+    nmds2grps
+    ggsave(plot=nmds2grps,
+           filename="results/figs/nmds2grps.jpeg",
+           width=12, height=10, units="cm")
     
   }
   
@@ -289,14 +314,13 @@ rm(list=ls())
     veg.scores3$HFbin <- veg_hf3$HFbin
     veg.scores3$HFbin <- recode(veg.scores3$HFbin, "1"="Low", "8"="Int.", "10"="High")
     
-
     spscores3 <- data.frame(scores(veg.nmds_final3, display="species"))
     spscores3$Species <- rownames(spscores3)
     
     impsp_5b <- bind_rows(top_n(spscores3, 5, wt=NMDS1),
                           top_n(spscores3, -5, wt=NMDS1))
     
-    ggplot(data=impsp_5b) +
+    nmds3grps <- ggplot(data=impsp_5b) +
       geom_point(data=veg.scores3, 
                  aes(x=NMDS1, y=NMDS2, 
                      color=as.factor(HFbin), 
@@ -307,12 +331,16 @@ rm(list=ls())
                        color=as.factor(HFbin))) +
       scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="Dist.") +
       scale_shape_manual(values=c(1,16), name="Protocol") +
-      geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
-                   color=1,
-                   arrow=arrow(length=unit(0.3, "cm"))) +
-      geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
-                       box.padding=1, size=3.5) +
+      # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
+      #              color=1,
+      #              arrow=arrow(length=unit(0.3, "cm"))) +
+      # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
+      #                  box.padding=1, size=3.5) +
       theme(legend.position="top")
+    
+    # ggsave(plot=nmds3grps,
+    #        filename="results/figs/nmds3grps.jpeg",
+    #        width=12, height=10, units="cm")
   }
 }
 
@@ -327,7 +355,12 @@ rm(list=ls())
   hf_bin3$HFbin <- recode(hf_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
   hf_bin3$HFbin <- factor(hf_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
-  ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
+  fig6 <- ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Human Development (%)")
+  
+  ggsave(plot=fig6, 
+         filename="results/figs/fig6.jpeg",
+         width=12, height=10, units="cm")
+  
 }
