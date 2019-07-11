@@ -3,6 +3,7 @@
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
 library(ape)
+library(lmerTest)
 
 rm(list=ls())
 
@@ -61,6 +62,56 @@ rm(list=ls())
                           by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
       select(-Exotic, -Native, -`Unknown/Undetermined`)
   }
+  
+}
+
+# prep data frames with 2 or 3 bins; calc distance matrices
+{
+  library(vegan)
+  veg_hf <- veg_pa %>% 
+    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+  veg_hf <- veg_hf %>% 
+    spread(key=Species, value=PA) %>% 
+    gather(key=Species, value=PA, 8:ncol(.)) %>% 
+    replace_na(list(PA=0)) %>% 
+    spread(key=Species, value=PA) 
+  hf_bin <- hf_tot
+  hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
+  
+  # disturbance levels of each bin
+  hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
+                                                      meddist=median(totdist_percent))
+  veg_hf <- left_join(veg_hf, 
+                      select(hf_bin, -totdist_percent), 
+                      by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+  
+  
+  # veg_hf2 has most & least dist communities
+  veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
+    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+  sptokeep2 <- colSums(veg_hf2[,9:ncol(veg_hf2)]) %>% data.frame() 
+  sptokeep2$Species <- rownames(sptokeep2)
+  colnames(sptokeep2) <- c("Obs", "Species")
+  sptokeep2 <-  filter(sptokeep2, Obs > 1)
+  veg_hf2 <- veg_hf2 %>% 
+    gather(Species, PA, 9:ncol(.)) %>% 
+    filter(Species %in% sptokeep2$Species) %>% 
+    spread(Species, PA)
+  
+  # veg_hf3 has most, least, and intermed dist communities
+  veg_hf3 <- veg_hf %>% filter(HFbin==1 | HFbin==8 | HFbin==10) %>% 
+    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+  sptokeep3 <- colSums(veg_hf3[,9:ncol(veg_hf3)]) %>% data.frame() 
+  sptokeep3$Species <- rownames(sptokeep3)
+  colnames(sptokeep3) <- c("Obs", "Species")
+  sptokeep3 <-  filter(sptokeep3, Obs > 1)
+  veg_hf3 <- veg_hf3 %>% 
+    gather(Species, PA, 9:ncol(.)) %>% 
+    filter(Species %in% sptokeep3$Species) %>% 
+    spread(Species, PA)
+  
+  veg_d2 <- vegdist(veg_hf2[,9:ncol(veg_hf2)], method="jaccard", binary=T)
+  veg_d3 <- vegdist(veg_hf3[,9:ncol(veg_hf3)], method="jaccard", binary=T)
   
 }
 
@@ -275,81 +326,28 @@ rm(list=ls())
 
 # 5. permanovas of multivariate NMDS's
 {
-  # prep ordination data
+  # permanova
   {
-    # prep data frames with 2 or 3 bins; calc distance matrices
-    {
-      library(vegan)
-      veg_hf <- veg_pa %>% 
-        select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-      veg_hf <- veg_hf %>% 
-        spread(key=Species, value=PA) %>% 
-        gather(key=Species, value=PA, 8:ncol(.)) %>% 
-        replace_na(list(PA=0)) %>% 
-        spread(key=Species, value=PA) 
-      hf_bin <- hf_tot
-      hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
-      
-      # disturbance levels of each bin
-      hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
-                                                          meddist=median(totdist_percent))
-      veg_hf <- left_join(veg_hf, 
-                          select(hf_bin, -totdist_percent), 
-                          by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-      
-
-      # veg_hf2 has most & least dist communities
-      veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
-        select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
-      sptokeep2 <- colSums(veg_hf2[,9:ncol(veg_hf2)]) %>% data.frame() 
-      sptokeep2$Species <- rownames(sptokeep2)
-      colnames(sptokeep2) <- c("Obs", "Species")
-      sptokeep2 <-  filter(sptokeep2, Obs > 1)
-      veg_hf2 <- veg_hf2 %>% 
-        gather(Species, PA, 9:ncol(.)) %>% 
-        filter(Species %in% sptokeep2$Species) %>% 
-        spread(Species, PA)
-      
-      # veg_hf3 has most, least, and intermed dist communities
-      veg_hf3 <- veg_hf %>% filter(HFbin==1 | HFbin==8 | HFbin==10) %>% 
-        select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
-      sptokeep3 <- colSums(veg_hf3[,9:ncol(veg_hf3)]) %>% data.frame() 
-      sptokeep3$Species <- rownames(sptokeep3)
-      colnames(sptokeep3) <- c("Obs", "Species")
-      sptokeep3 <-  filter(sptokeep3, Obs > 1)
-      veg_hf3 <- veg_hf3 %>% 
-        gather(Species, PA, 9:ncol(.)) %>% 
-        filter(Species %in% sptokeep3$Species) %>% 
-        spread(Species, PA)
+    # check for sig diffs among 2 groups
+    mrpp(veg_d2, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
     
-      veg_d2 <- vegdist(veg_hf2[,9:ncol(veg_hf2)], method="jaccard", binary=T)
-      veg_d3 <- vegdist(veg_hf3[,9:ncol(veg_hf3)], method="jaccard", binary=T)
-
-    }
+    adonis2(veg_d2 ~ as.factor(veg_hf2$HFbin) + as.factor(veg_hf2$Protocol),
+            by="margin") # both significant
     
-    # permanova
-    {
-      # check for sig diffs among 2 groups
-      mrpp(veg_d2, grouping=as.factor(veg_hf2$HFbin)) # sig diff between groups based on mean score
-      
-      adonis2(veg_d2 ~ as.factor(veg_hf2$HFbin) + as.factor(veg_hf2$Protocol),
-              by="margin") # both significant
-      
-      # check for sig diffs among 3 groups
-      library(RVAideMemoire)
-      library(ecodist)
-      
-      adonis2(veg_d3 ~ as.factor(veg_hf3$HFbin) + as.factor(veg_hf3$Protocol),
-              by="margin") # both significant
-      
-      pairwise.perm.manova(resp=veg_d3, fact=veg_hf3$HFbin, p.method="holm")
-      mrpp(veg_d3, grouping=as.factor(veg_hf3$HFbin)) # sig diff between groups based on mean score
-      
-    }
+    # check for sig diffs among 3 groups
+    library(RVAideMemoire)
+    library(ecodist)
+    
+    adonis2(veg_d3 ~ as.factor(veg_hf3$HFbin) + as.factor(veg_hf3$Protocol),
+            by="margin") # both significant
+    
+    pairwise.perm.manova(resp=veg_d3, fact=veg_hf3$HFbin, p.method="holm")
+    mrpp(veg_d3, grouping=as.factor(veg_hf3$HFbin)) # sig diff between groups based on mean score
+    
   }
 }
 
-# 6. comparison of mean disturbance across low, med, high bins
+# 6. comparison of median disturbance across low, med, high bins
 {
   
   # disturbance levels of each bin
@@ -375,5 +373,28 @@ rm(list=ls())
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Human Development (%)")
   
+  
+}
+
+# 7. comparison of median prop exotic across low/med/high bins
+{
+  exot_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
+                        veg_exot, 
+                        by=c("Protocol", "WetlandType", "Year", "Site"))
+  
+  exot_bin %>% 
+    group_by(as.factor(HFbin)) %>% 
+    summarize(medexot=median(propexotic),
+              IQRexot=IQR(propexotic))
+  
+  
+  # exot_bin2 <- exot_bin %>% filter(HFbin==1 | HFbin==10)
+  # exot_bin2$UniqueID <- paste(exot_bin2$Protocol, exot_bin2$Site, sep="_")
+  
+  
+  exot_bin3 <- exot_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
+  exot_bin3$UniqueID <- paste(exot_bin3$Protocol, exot_bin3$Site, sep="_")
+  exot_bin3$HFbin <- recode(exot_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+  exot_bin3$HFbin <- factor(exot_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
 }
