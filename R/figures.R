@@ -5,6 +5,26 @@ library(lme4)
 
 rm(list=ls())
 
+# graphing specs
+{
+  transparent_legend =  theme(
+    legend.position = "top",
+    legend.background = element_rect(fill = NA),
+    legend.key = element_rect(fill = NA, 
+                              color = NA))
+  transparent_plot =  theme(
+    plot.background = element_rect(fill = "white", color="white"),
+    panel.background = element_rect(fill = "white", color="white"),
+    panel.grid = element_blank())
+  
+  font_sizes <- theme(
+    axis.text=element_text(size=6, color="black"),
+    axis.title=element_text(size=8),
+    legend.text=element_text(size=6),
+    legend.title=element_text(size=8),
+    strip.text=element_text(size=6))
+}
+
 # prep CSI, species richness, and exotic species data frames ####
 {
   # plant data ####
@@ -63,6 +83,55 @@ rm(list=ls())
   
 }
 
+# prep binnned df for NMDS
+{
+  # prep data frames with 2  or 3 bins
+  {
+    library(vegan)
+    veg_hf <- veg_pa %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+    veg_hf <- veg_hf %>% 
+      spread(key=Species, value=PA) %>% 
+      gather(key=Species, value=PA, 8:ncol(.)) %>% 
+      replace_na(list(PA=0)) %>% 
+      spread(key=Species, value=PA) 
+    hf_bin <- hf_tot
+    hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
+    hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
+                                                        meddist=median(totdist_percent))
+    veg_hf <- left_join(veg_hf, 
+                        select(hf_bin, -totdist_percent), 
+                        by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+    
+    # veg_hf2 has most & least dist communities
+    veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+    sptokeep2 <- colSums(veg_hf2[,9:ncol(veg_hf2)]) %>% data.frame() 
+    sptokeep2$Species <- rownames(sptokeep2)
+    colnames(sptokeep2) <- c("Obs", "Species")
+    sptokeep2 <-  filter(sptokeep2, Obs > 1)
+    veg_hf2 <- veg_hf2 %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep2$Species) %>% 
+      spread(Species, PA)
+    
+    # veg_hf3 has most, least, and intermed dist communities
+    veg_hf3 <- veg_hf %>% filter(HFbin==1 | HFbin==8 | HFbin==10) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+    sptokeep3 <- colSums(veg_hf3[,9:ncol(veg_hf3)]) %>% data.frame() 
+    sptokeep3$Species <- rownames(sptokeep3)
+    colnames(sptokeep3) <- c("Obs", "Species")
+    sptokeep3 <-  filter(sptokeep3, Obs > 1)
+    veg_hf3 <- veg_hf3 %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep3$Species) %>% 
+      spread(Species, PA)
+    
+  }
+  
+  
+}
+
 # 1. sp richness vs HF (i.e. IDH) ####
 {
   fig1 <- ggplot(spR, aes(x=totdist_percent, y=rich)) +
@@ -73,7 +142,7 @@ rm(list=ls())
                 method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
-    theme(legend.position = "top")
+    theme(legend.position = "top") + font_sizes
   
   # ggsave(plot=fig1,
   #        filename="results/figs/fig1.jpeg",
@@ -85,20 +154,32 @@ rm(list=ls())
 {
   # black and white
   fig2 <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
-    labs(x="Total Human Development (%)", y="CSI to human develpoment") +
+    labs(x="Total Human Development (%)", y="CSI to HD") +
     geom_point(alpha=0.5, color="grey70") + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
-    theme(legend.position = "top")
+    theme(legend.position = "top") + font_sizes
   
   # ggsave(plot=fig2,
   #        filename="results/figs/fig2.jpeg",
   #        width=10, height=8, units="cm")
   
-
+  # two panel figure
+  myleg <- get_legend(fig1)
+  fig1_twopanel <- plot_grid(fig1 + theme(legend.position = "none"),
+            fig2 + theme(legend.position="none"),
+            ncol=1, nrow=2,
+            labels="auto", label_size = 12)
+  
+  fig1_twopanel <- plot_grid(myleg, fig1_twopanel, 
+            ncol=1, nrow=2,
+            rel_heights=c(0.1,1))
+  ggsave(plot=fig1_twopanel,
+         filename = "results/figs/fig1 - two panel.jpeg",
+         width=5, height=10, units="cm")
   
   # colored and faceted by protocol
   ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
@@ -203,50 +284,6 @@ rm(list=ls())
 
 # 5. NMDS ordinations ####
 {
-  # prep data frames with 2  or 3 bins
-  {
-    library(vegan)
-    veg_hf <- veg_pa %>% 
-      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-    veg_hf <- veg_hf %>% 
-      spread(key=Species, value=PA) %>% 
-      gather(key=Species, value=PA, 8:ncol(.)) %>% 
-      replace_na(list(PA=0)) %>% 
-      spread(key=Species, value=PA) 
-    hf_bin <- hf_tot
-    hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
-    hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
-                                                        meddist=median(totdist_percent))
-    veg_hf <- left_join(veg_hf, 
-                        select(hf_bin, -totdist_percent), 
-                        by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-    
-    # veg_hf2 has most & least dist communities
-    veg_hf2 <- veg_hf %>% filter(HFbin==1 | HFbin==10) %>% 
-      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
-    sptokeep2 <- colSums(veg_hf2[,9:ncol(veg_hf2)]) %>% data.frame() 
-    sptokeep2$Species <- rownames(sptokeep2)
-    colnames(sptokeep2) <- c("Obs", "Species")
-    sptokeep2 <-  filter(sptokeep2, Obs > 1)
-    veg_hf2 <- veg_hf2 %>% 
-      gather(Species, PA, 9:ncol(.)) %>% 
-      filter(Species %in% sptokeep2$Species) %>% 
-      spread(Species, PA)
-
-    # veg_hf3 has most, least, and intermed dist communities
-    veg_hf3 <- veg_hf %>% filter(HFbin==1 | HFbin==8 | HFbin==10) %>% 
-      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
-    sptokeep3 <- colSums(veg_hf3[,9:ncol(veg_hf3)]) %>% data.frame() 
-    sptokeep3$Species <- rownames(sptokeep3)
-    colnames(sptokeep3) <- c("Obs", "Species")
-    sptokeep3 <-  filter(sptokeep3, Obs > 1)
-    veg_hf3 <- veg_hf3 %>% 
-      gather(Species, PA, 9:ncol(.)) %>% 
-      filter(Species %in% sptokeep3$Species) %>% 
-      spread(Species, PA)
-    
-  }
-  
   # NMDS for most vs least dist sites
   {
     veg.nmds_final2 <- metaMDS(veg_hf2[,9:ncol(veg_hf2)], 
@@ -344,7 +381,7 @@ rm(list=ls())
   }
 }
 
-# 6. HF across bins
+# 6. HF across bins ###
 {
   hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
   hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
@@ -362,5 +399,31 @@ rm(list=ls())
   # ggsave(plot=fig6, 
   #        filename="results/figs/fig6.jpeg",
   #        width=12, height=10, units="cm")
+  
+}
+
+# 7. prop exotic across bins ###
+{
+  exot_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
+            veg_exot, 
+            by=c("Protocol", "WetlandType", "Year", "Site"))
+  
+  
+  exot_bin2 <- exot_bin %>% filter(HFbin==1 | HFbin==10)
+  exot_bin2$UniqueID <- paste(exot_bin2$Protocol, exot_bin2$Site, sep="_")
+  
+  
+  exot_bin3 <- exot_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
+  exot_bin3$UniqueID <- paste(exot_bin3$Protocol, exot_bin3$Site, sep="_")
+  exot_bin3$HFbin <- recode(exot_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+  exot_bin3$HFbin <- factor(exot_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
+  
+  fig7 <- ggplot(exot_bin3, aes(x=HFbin, y=totdist_percent)) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="Prop. Exotics (%)") + font_sizes
+  
+  ggsave(plot=fig7,
+         filename="results/figs/fig7.jpeg",
+         width=8, height=8, units="cm")
   
 }
