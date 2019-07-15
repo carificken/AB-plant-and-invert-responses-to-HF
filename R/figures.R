@@ -136,7 +136,7 @@ rm(list=ls())
 {
   fig1 <- ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
-    geom_point(alpha=0.5, color="grey70") + 
+    geom_point(color="grey70", alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
@@ -144,9 +144,10 @@ rm(list=ls())
     theme_classic() +
     theme(legend.position = "top") + font_sizes
   
-  # ggsave(plot=fig1,
-  #        filename="results/figs/fig1.jpeg",
-  #        width=10, height=8, units="cm")
+  fig1
+  ggsave(plot=fig1,
+         filename="results/figs/fig1.jpeg",
+         width=10, height=8, units="cm")
   
 }
 
@@ -154,7 +155,7 @@ rm(list=ls())
 {
   # black and white
   fig2 <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
-    labs(x="Total Human Development (%)", y="CSI to HD") +
+    labs(x="Total Human Development (%)", y="Niche Breadth") +
     geom_point(alpha=0.5, color="grey70") + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
@@ -248,15 +249,22 @@ rm(list=ls())
 # 3. rich vs HF x Exotics ####
 {
   fig3 <- ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
-    geom_point(alpha=0.8, aes(color=propexotic)) +
+    geom_point(alpha=0.8, aes(color=propexotic), size=1) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
-    scale_color_gradient(low="yellow", high="red", name="% Exotics") +
+    scale_color_gradient(low="skyblue", high="red", name="% Exotics") +
     theme_classic() +
-    theme(legend.position = "top")
+    theme(legend.position = "top") + font_sizes + 
+    guides(linetype=guide_legend(title.position="top"),
+           color=guide_colorbar(barwidth = 5, barheight=.8, title.position = "top"))
+  fig3
+  fig3 <- fig3 + coord_cartesian(ylim=c(0,125), clip="off") +
+    annotate("segment", x=-1, xend=1, y=-1, yend=-1, size=1.2) +
+    annotate("segment", x=25.5, xend=60.7, y=-1, yend=-1, size=1.2) +
+    annotate("segment", x=89.2, xend=101, y=-1, yend=-1, size=1.2)
   
   # ggsave(plot=fig3,
   #        filename="results/figs/fig3.jpeg",
@@ -381,7 +389,7 @@ rm(list=ls())
   }
 }
 
-# 6. HF across bins ###
+# 6. HF across bins ####
 {
   hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
   hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
@@ -394,7 +402,9 @@ rm(list=ls())
   
   fig6 <- ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
     geom_boxplot(fill="grey80") +
-    labs(x="Disturbance Level", y="Human Development (%)")
+    labs(x="Disturbance Level", y="Human Development (%)") + 
+    font_sizes
+  fig6
   
   # ggsave(plot=fig6, 
   #        filename="results/figs/fig6.jpeg",
@@ -402,7 +412,7 @@ rm(list=ls())
   
 }
 
-# 7. prop exotic across bins ###
+# 7. prop exotic across bins ####
 {
   exot_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
             veg_exot, 
@@ -421,9 +431,18 @@ rm(list=ls())
   fig7 <- ggplot(exot_bin3, aes(x=HFbin, y=totdist_percent)) +
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Prop. Exotics (%)") + font_sizes
-  
-  ggsave(plot=fig7,
-         filename="results/figs/fig7.jpeg",
-         width=8, height=8, units="cm")
-  
+  fig7
+  # ggsave(plot=fig7,
+         # filename="results/figs/fig7.jpeg",
+         # width=8, height=8, units="cm")
+  myleg <- get_legend(fig3)
+  fig367 <- plot_grid(fig3 +theme(legend.position = "none"),
+                      fig6,
+                      fig7,ncol=1, align = "v",
+            labels = "auto")
+  fig367 <- plot_grid(myleg, fig367, ncol=1, rel_heights = c(0.1,1.1))
+  fig367
+  ggsave(plot=fig367,
+         filename="results/figs/fig367.jpeg",
+          width=6, height=14, units="cm")
 }
