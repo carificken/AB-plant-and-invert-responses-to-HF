@@ -67,9 +67,20 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   # first create 10 bins
   hf_tot$HFbin <- ntile(hf_tot$totdist_percent, n=10) 
   
+  ggplot(hf_tot, aes(x=totdist_percent)) + 
+    geom_histogram(fill="grey70", color=1) +
+    labs(x="HD (%)") +
+    theme(axis.text = element_text(size=22),
+          axis.title=element_text(size=22))
+  
   hf_tot %>%
     ggplot(aes(x=HFbin)) +
-    geom_histogram(bins=10, color=1, fill="white") # approx 200 sites per bin
+    geom_histogram(bins=10, color=1, fill="grey70") + # approx 200 sites per bin
+    labs(x="HD Bin") +
+    expand_limits(x=10) +
+    scale_x_continuous(breaks=1:10) +
+    theme(axis.text = element_text(size=22),
+          axis.title=element_text(size=22))
   
   veg_hf <- left_join(veg_pa, hf_tot, by=c("NRNAME", "WetlandType", "Protocol", "Site", "Year"))
   
@@ -80,7 +91,12 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
     filter(Species=="Typha latifolia") %>% 
     ggplot(aes(x=HFbin,y=occ_freq)) + 
     ggtitle("Typha latifolia") +
-    geom_bar(stat="identity")
+    geom_bar(stat="identity") +
+    expand_limits(x=10) +
+    scale_x_discrete(limits=1:10, breaks=1:10) +
+    labs(x="HD Bin", y="Occurrence (# sites)") +
+    theme(axis.text = element_text(size=22),
+          axis.title=element_text(size=22))
   
   # calc occurrence freq of each sp in each bin
   # must exclude species which were found in sits w/o climate data, and therefore were not assigned a bin 
@@ -155,7 +171,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   
 # SSI from 1000 randomizations
 {
-  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
   head(sp_SSI)
   colnames(sp_SSI) <- c("Species", "CV")
 }
@@ -213,6 +229,7 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
   spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
   spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
   head(spR)
+  
   # check for spatial & temporal correlations of this relationship too
   tmp <- lm(rich ~ totdist_percent, data=spR)
   summary(lm(tmp$residuals ~ spR$Latitude)) # ns
@@ -260,6 +277,33 @@ ggplot(hf_tot, aes(x=totdist_percent)) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
     theme(legend.position = "top")
+  
+  # for sites sampled 2x how is richness changing
+  {
+    dblsamp <- spR %>% group_by(UniqueID) %>% tally() %>% filter(n==2)
+    dblsamp <- spR %>% filter(UniqueID %in% dblsamp$UniqueID)
+    dblsamp <- dblsamp %>% arrange(UniqueID, Year) 
+    dblsamp$SamplingTime <- rep(c("Before", "After"), times=470)
+    dblsamp %>% group_by(UniqueID) %>% mutate(spchange = After-Before) %>% head()
+    
+    tmp <- dblsamp %>% ungroup() %>% select(UniqueID, rich, SamplingTime) %>% group_by(UniqueID) %>% spread(key=SamplingTime, value=rich)
+    
+    tmp$richchange <- ifelse(tmp$After - tmp$Before > 0, "increasing", ifelse(tmp$After-tmp$Before<0, "decreasing", "no change"))
+    dblsamp <- left_join(dblsamp, select(tmp, UniqueID, richchange), by=c("UniqueID"))
+    
+    ggplot(dblsamp, aes(x=totdist_percent, y=rich, group=UniqueID)) +
+      labs(x="Total Human Development (%)", y="Species Richness") +
+      geom_point(alpha=0.5, color="grey70") + 
+      geom_line(aes(color=richchange)) +
+      scale_color_manual()
+      # geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+      # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+      #             method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+      # scale_linetype_manual(values=c("dashed", "dotdash")) +
+      theme_classic() +
+      theme(legend.position = "top")
+    }
+  
   
 }
 
