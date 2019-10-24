@@ -38,7 +38,8 @@ hf_tot <- hf %>% group_by(Latitude, Longitude,Protocol, NRNAME, WetlandType, Sit
 ```
 
 ```{r load SSI values}
-  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+  sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
+
   colnames(sp_SSI) <- c("Species", "CV")
 ```
 

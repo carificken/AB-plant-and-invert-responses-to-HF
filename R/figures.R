@@ -37,7 +37,7 @@ rm(list=ls())
  
   # SSI from 1000 randomizations
   {
-    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
     colnames(sp_SSI) <- c("Species", "CV")
   }
   
@@ -145,9 +145,35 @@ rm(list=ls())
     theme(legend.position = "top") + font_sizes
   
   fig1
-  ggsave(plot=fig1,
-         filename="results/figs/fig1.jpeg",
-         width=10, height=8, units="cm")
+  # ggsave(plot=fig1,
+  #        filename="results/figs/fig1.jpeg",
+  #        width=10, height=8, units="cm")
+  
+  # colored and faceted by NR
+  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
+    geom_point(alpha=0.5, aes(color=NRNAME), show.legend = F) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
+    # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+    #             method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    facet_wrap(~NRNAME) +
+    theme_classic() +
+    theme(legend.position = "top") + font_sizes
+  
+  # colored and faceted by wetland class
+  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
+    geom_point(alpha=0.5, aes(color=WetlandType), show.legend = F) + 
+    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
+    # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+    #             method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    facet_wrap(~WetlandType) +
+    theme_classic() +
+    theme(legend.position = "top") + font_sizes
   
 }
 
@@ -155,7 +181,7 @@ rm(list=ls())
 {
   # black and white
   fig2 <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
-    labs(x="Total Human Development (%)", y="Niche Breadth") +
+    labs(x="Total Human Development (%)", y="Niche Specialization") +
     geom_point(alpha=0.5, color="grey70") + 
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
@@ -164,6 +190,7 @@ rm(list=ls())
     theme_classic() +
     theme(legend.position = "top") + font_sizes
   
+  fig2
   # ggsave(plot=fig2,
   #        filename="results/figs/fig2.jpeg",
   #        width=10, height=8, units="cm")
@@ -178,12 +205,14 @@ rm(list=ls())
   fig1_twopanel <- plot_grid(myleg, fig1_twopanel, 
             ncol=1, nrow=2,
             rel_heights=c(0.1,1))
-  ggsave(plot=fig1_twopanel,
-         filename = "results/figs/fig1 - two panel.jpeg",
-         width=5, height=10, units="cm")
+  
+  fig1_twopanel
+  # ggsave(plot=fig1_twopanel,
+  #        filename = "results/figs/fig1 - two panel.jpeg",
+  #        width=10, height=15, units="cm")
   
   # colored and faceted by protocol
-  ggplot(veg_CSI_HF,aes(x=totdist_percent,y=CSI, color=Protocol)) +
+  ggplot(veg_CSI_HFng,aes(x=totdist_percent,y=CSI, color=Protocol)) +
     ggtitle("Protocol") +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
     geom_point(alpha=0.5) + 
@@ -220,9 +249,12 @@ rm(list=ls())
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
                 method="lm", formula=y~poly(x,2), se=F, size=0.5, color=1) +
+    
     scale_linetype_manual(values=c("dashed", "dotdash")) +
-    labs(x="Total Development (%)", y="Exotic Sp. (%)") +
-    theme(legend.position = "top")
+    labs(x="Total Development (%)", y="Nonnative Sp. (%)") +
+    theme_classic() +
+    theme(legend.position = "top") + font_sizes
+  exotic1
   
   exotic2 <- ggplot(veg_exot, aes(x=rich, y=propexotic)) +
     geom_point(alpha=0.5, color="grey70") +
@@ -275,14 +307,20 @@ rm(list=ls())
 # 4. CSI vs HF x Exotics ####
 {
   fig4 <- ggplot(veg_exot, aes(x=totdist_percent, y=CSI)) +
-    geom_point(alpha=0.8, aes(color=propexotic)) +
+    geom_point(alpha=0.8, aes(color=propexotic), size=3) +
     labs(x="Total Human Development (%)", y="CSI") +
     geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
                 method="lm",se=F, formula=y~poly(x,2), size=0.5, color=1) +  
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     scale_color_gradient(low="yellow", high="red", name="% Exotics") +
-    theme(legend.position = "top") 
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.box="vertical",
+          legend.box.just = "left",
+          axis.title = element_text(size=22),
+          axis.text=element_text(size=20)) 
+  fig4
   
   # ggsave(plot=fig4,
   #        filename="results/figs/fig4.jpeg",
@@ -323,7 +361,7 @@ rm(list=ls())
                  aes(x=NMDS1, y=NMDS2, 
                      color=as.factor(HFbin),
                      shape=as.factor(Protocol)),
-                 size=3) +
+                 size=2) +
       stat_ellipse(data=veg.scores2, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin))) +
@@ -334,11 +372,12 @@ rm(list=ls())
       #              arrow=arrow(length=unit(0.3, "cm"))) +
       # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
       #                  box.padding=1, size=3.5) +
-      theme(legend.position="top")
+      theme(legend.position="top") + font_sizes
     nmds2grps
-    ggsave(plot=nmds2grps,
-           filename="results/figs/nmds2grps.jpeg",
-           width=12, height=10, units="cm")
+    
+    # ggsave(plot=nmds2grps,
+    #        filename="results/figs/nmds2grps.jpeg",
+    #        width=12, height=10, units="cm")
     
   }
   
@@ -368,24 +407,37 @@ rm(list=ls())
     nmds3grps <- ggplot(data=impsp_5b) +
       geom_point(data=veg.scores3, 
                  aes(x=NMDS1, y=NMDS2, 
-                     color=as.factor(HFbin), 
+                     color=as.factor(HFbin),
                      shape=as.factor(Protocol)),
-                 size=3) +
+                 size=2) +
       stat_ellipse(data=veg.scores3, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin))) +
-      scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="Dist.") +
+      scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="HD Level") +
       scale_shape_manual(values=c(1,16), name="Protocol") +
       # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
       #              color=1,
       #              arrow=arrow(length=unit(0.3, "cm"))) +
       # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
       #                  box.padding=1, size=3.5) +
-      theme(legend.position="top")
-    
+      theme(legend.position="top") + font_sizes
+    nmds3grps
+
     # ggsave(plot=nmds3grps,
     #        filename="results/figs/nmds3grps.jpeg",
     #        width=12, height=10, units="cm")
+    
+    # combined ord figs
+    myleg <- get_legend(nmds3grps + theme(legend.justification = "center", legend.direction="horizontal"))
+    ordfigs <- plot_grid(nmds2grps + theme(legend.position="none"), 
+              nmds3grps + theme(legend.position="none"), 
+              nrow=1, ncol=2, labels="auto", align="h") 
+    
+    ordfigs <- plot_grid(myleg, ordfigs, nrow=2, ncol=1, 
+                         rel_heights=c(0.2,1) )
+    ordfigs
+    ggsave(ordfigs, filename="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Combined ords.jpeg",
+           height=8, width=16, units="cm")
   }
 }
 
@@ -430,7 +482,7 @@ rm(list=ls())
   
   fig7 <- ggplot(exot_bin3, aes(x=HFbin, y=totdist_percent)) +
     geom_boxplot(fill="grey80") +
-    labs(x="Disturbance Level", y="Prop. Exotics (%)") + font_sizes
+    labs(x="Development Level", y="Nonnative Sp. (%)") + font_sizes
   fig7
   # ggsave(plot=fig7,
          # filename="results/figs/fig7.jpeg",
@@ -444,5 +496,11 @@ rm(list=ls())
   fig367
   ggsave(plot=fig367,
          filename="results/figs/fig367.jpeg",
-          width=6, height=14, units="cm")
+          width=6, height=12, units="cm")
+  
+  figexot7 <- plot_grid(exotic1, fig7, ncol=1, nrow=2, align="v", labels = "auto")
+  figexot7
+  ggsave(plot=figexot7,
+         filename="results/figs/figexot7.jpeg",
+         width=8, height=12, units="cm")
 }

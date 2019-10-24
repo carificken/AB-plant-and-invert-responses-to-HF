@@ -8,7 +8,7 @@ library(lmerTest)
 rm(list=ls())
 
 # prep CSI, species richness, and exotic species data frames ####
-{
+{ 
   # plant data ####
   veg_pa <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
   
@@ -19,7 +19,7 @@ rm(list=ls())
   
   # SSI from 1000 randomizations
   {
-    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_final.csv", sep=";")
+    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
     colnames(sp_SSI) <- c("Species", "CV")
   }
   
@@ -61,11 +61,11 @@ rm(list=ls())
                           veg_exot, 
                           by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
       select(-Exotic, -Native, -`Unknown/Undetermined`)
-  }
+}
   
 }
 
-# prep data frames with 2 or 3 bins; calc distance matrices
+# prep data frames with 2 or 3 bins; calc distance matrices ####
 {
   library(vegan)
   veg_hf <- veg_pa %>% 
@@ -113,9 +113,80 @@ rm(list=ls())
   veg_d2 <- vegdist(veg_hf2[,9:ncol(veg_hf2)], method="jaccard", binary=T)
   veg_d3 <- vegdist(veg_hf3[,9:ncol(veg_hf3)], method="jaccard", binary=T)
   
+  # test 3 bins with different low HD bin
+  {
+    # veg_hf3 has most, least, and intermed dist communities
+    veg_hf3a <- veg_hf %>% filter(HFbin==2 | HFbin==8 | HFbin==10) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+    veg_hf3b <- veg_hf %>% filter(HFbin==3 | HFbin==8 | HFbin==10) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+    
+    sptokeep3a <- colSums(veg_hf3a[,9:ncol(veg_hf3a)]) %>% data.frame() 
+    sptokeep3a$Species <- rownames(sptokeep3a)
+    colnames(sptokeep3a) <- c("Obs", "Species")
+    sptokeep3a <-  filter(sptokeep3a, Obs > 1)
+    
+    sptokeep3b <- colSums(veg_hf3b[,9:ncol(veg_hf3b)]) %>% data.frame() 
+    sptokeep3b$Species <- rownames(sptokeep3b)
+    colnames(sptokeep3b) <- c("Obs", "Species")
+    sptokeep3b <-  filter(sptokeep3b, Obs > 1)
+    
+    veg_hf3a <- veg_hf3a %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep3a$Species) %>% 
+      spread(Species, PA)
+    veg_hf3b <- veg_hf3b %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep3b$Species) %>% 
+      spread(Species, PA)
+    
+    veg_d3a <- vegdist(veg_hf3a[,9:ncol(veg_hf3a)], method="jaccard", binary=T)
+    veg_d3b <- vegdist(veg_hf3b[,9:ncol(veg_hf3b)], method="jaccard", binary=T)
+  }  
+  
 }
 
-# 0. test for spatial autocorrelation - Moran's I
+# how many sites and species ####
+{
+  spR %>% distinct(Protocol, Site) %>% nrow() # 1585 unique wetlands (some sampled >1x)
+  spR %>% group_by(Protocol, Site) %>% 
+    tally() %>% 
+    filter(n>1) %>% 
+    arrange(desc(n)) %>% 
+    nrow() # 471 sampled 2x or 3x
+  nrow(spR) # unique sampling events
+  
+  # how much time and HD in between samplings
+  {  
+    spR %>% filter(Site=="1500") # sampled 3x
+    
+    doublesites <- spR %>% group_by(Protocol, Site) %>% 
+    tally() %>% 
+    filter(n>1) %>% 
+    arrange(desc(n)) %>% 
+    filter(Site!="1500")
+
+  dubsamp <- left_join(select(doublesites, -n), spR, by=c("Protocol", "Site")) %>% select(-Latitude, -Longitude)
+  dubsamp$Year2 <- rep(c("Early", "Late"), times=nrow(dubsamp)/2)
+
+  # on average how many years between sampling periods
+  tmp1 <- dubsamp %>% select(-rich, -totdist_percent, -WetlandType) %>% spread(key=Year2, value=Year) %>% mutate(yrchange=(Late-Early))
+  mean(tmp1$yrchange)
+  
+  }
+  
+  # total disturbance (area_km2) in early and late sampling year
+  tmp <- dubsamp %>% select(-Year, -rich, -WetlandType) %>% spread(key=Year2, value=totdist_percent)
+  mean(tmp$Late-tmp$Early)
+  head(tmp)
+  head(dubsamp)
+  
+  shapiro.test(dubsamp$totdist_percent) # not normal
+  t.test(x=tmp$Early, y=tmp$Late, paired=T, alternative = "less")
+  wilcox.test(x=tmp$Early, y=tmp$Late, paired=T, alternative = "less")
+}
+
+# 0. test for spatial autocorrelation - Moran's I ####
 {
   # richness w/ ape::Moran.I
   {
@@ -145,7 +216,7 @@ rm(list=ls())
 
 }
 
-# 1. how does sp richness vary across HF gradient
+# 1a. how does sp richness vary across HF gradient ####
 {
   spR$Year <- as.factor(spR$Year)
   # should HF be linear or quad? and does ran ef variance differ from zero?
@@ -157,9 +228,9 @@ rm(list=ls())
                       Protocol + 
                       (1|Year) + (1|UniqueID), 
                     data=spR, REML=F)
-  summary(rich.linear) # RE of unique site ID should be kept
-  summary(rich.poly) # RE of unique site ID should be kept
-  AIC(rich.linear, rich.poly) # poly is better
+  anova(rich.linear, type=2) # RE of unique site ID should be kept
+  anova(rich.poly, type=2) # RE of unique site ID should be kept
+  anova(rich.linear, rich.poly) # poly is better
   
   piecewiseSEM::rsquared(rich.poly) # best model
   
@@ -193,7 +264,93 @@ rm(list=ls())
 
 }
 
-# 2. How does CSI vary with HF
+# 1b. how does sp richness vary across HF gradient within each NR ####
+{
+  spR$Year <- as.factor(spR$Year)
+  table(spR$NRNAME)
+  
+  # boreal
+  {
+    boreal.linear <- lmer(rich ~ totdist_percent + 
+                           Protocol + 
+                           (1|Year) + (1|UniqueID), 
+                         data=filter(spR, NRNAME=="Boreal"), 
+                         REML=F)
+    boreal.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                         Protocol + 
+                         (1|Year) + (1|UniqueID), 
+                       data=filter(spR, NRNAME=="Boreal"), 
+                       REML=F)
+    AIC(boreal.linear, boreal.poly) # poly is better
+    piecewiseSEM::rsquared(boreal.poly) # best model
+  }
+  
+  # foothills - no sites were double sampled so removed unique ID as ran ef
+  {
+    foothills.linear <- lmer(rich ~ totdist_percent + 
+                            Protocol + 
+                            (1|Year), 
+                          data=filter(spR, NRNAME=="Foothills"), 
+                          REML=F)
+    
+    foothills.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                          Protocol + 
+                          (1|Year), 
+                        data=filter(spR, NRNAME=="Foothills"), 
+                        REML=F)
+    AIC(foothills.linear, foothills.poly) # poly is better
+    piecewiseSEM::rsquared(foothills.poly) # best model
+  }
+  
+  # grassland
+  {
+    grass.linear <- lmer(rich ~ totdist_percent + 
+                           Protocol + 
+                           (1|Year) + (1|UniqueID), 
+                         data=filter(spR, NRNAME=="Grassland"), 
+                         REML=F)
+    grass.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                         Protocol + 
+                         (1|Year) + (1|UniqueID), 
+                       data=filter(spR, NRNAME=="Grassland"), 
+                       REML=F)
+    AIC(grass.linear, grass.poly) # poly is better
+    piecewiseSEM::rsquared(grass.poly) # best model
+  }
+
+  # parkland - some convergence issues
+  {
+    parkland.linear <- lmer(rich ~ totdist_percent + 
+                           Protocol + 
+                           (1|Year) + (1|UniqueID), 
+                         data=filter(spR, NRNAME=="Parkland"), 
+                         REML=F)
+    parkland.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                         Protocol + 
+                         (1|Year) + (1|UniqueID), 
+                       data=filter(spR, NRNAME=="Parkland"), 
+                       REML=F)
+    AIC(parkland.linear, parkland.poly) # poly is better
+    piecewiseSEM::rsquared(parkland.poly) # best model
+  }
+  
+  # rocky mountain - linear is better but note that HD doesn't extend to full gradient
+  {
+    mtn.linear <- lmer(rich ~ totdist_percent + 
+                              Protocol + 
+                              (1|Year) + (1|UniqueID), 
+                            data=filter(spR, NRNAME=="Rocky Mountain"), 
+                            REML=F)
+    mtn.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+                            Protocol + 
+                            (1|Year) + (1|UniqueID), 
+                          data=filter(spR, NRNAME=="Rocky Mountain"), 
+                          REML=F)
+    AIC(mtn.linear, mtn.poly) # linear is better
+  }
+}
+
+# 2. How does CSI vary with HF ####
 {
   csi.linear <- lmer(CSI ~ totdist_percent + 
                        Protocol + 
@@ -205,8 +362,9 @@ rm(list=ls())
                      (1|Year) + (1|UniqueID), 
                    data=veg_CSI_HF,
                    REML = F)
-  summary(csi.linear) # variance on group RE indistinguishable from zero
-  summary(csi.poly) # variance on group RE indistinguishable from zero
+  anova(csi.linear, type=2) # variance on group RE indistinguishable from zero
+  anova(csi.poly, type=2) # variance on group RE indistinguishable from zero
+  anova(csi.linear, csi.poly)
   AIC(csi.linear, csi.poly) # csi poly
   
   piecewiseSEM::rsquared(csi.poly) # best model
@@ -246,7 +404,7 @@ rm(list=ls())
 
 }
 
-# 3. Does including % exotics improve fit of richness model (from 1 above)
+# 3. Does including % exotics improve fit of richness model (from 1 above) ####
 {
   rich.poly # previous best
   # refit previous best w/ updated df that includes exotic
@@ -275,14 +433,17 @@ rm(list=ls())
   AIC(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
   anova(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
   summary(rich.poly.exot.interaction)
+  anova(rich.poly.exot.interaction, type=2)
   piecewiseSEM::rsquared(rich.polya)
+  
+  anova(rich.polya, rich.poly.exot.interaction)
 
   piecewiseSEM::rsquared(rich.poly.exot.interaction) # best model
   
   Moran.I(residuals(rich.poly.exot.interaction), rich.d.inv) # I=0.003
 }
 
-# 4. does including % exotics improve fit of CSI model (from 2 above)
+# 4. does including % exotics improve fit of CSI model (from 2 above) ####
 {
   csi.poly # previous best
   # refit previous best w/ updated df
@@ -324,7 +485,7 @@ rm(list=ls())
   Moran.I(residuals(csi.poly.exot.interaction), rich.d.inv) # I=0.006 
 }
 
-# 5. permanovas of multivariate NMDS's
+# 5. permanovas of multivariate NMDS's ####
 {
   # permanova
   {
@@ -340,21 +501,35 @@ rm(list=ls())
     
     adonis2(veg_d3 ~ as.factor(veg_hf3$HFbin) + as.factor(veg_hf3$Protocol),
             by="margin") # both significant
+    adonis2(veg_d3a ~ as.factor(veg_hf3a$HFbin) + as.factor(veg_hf3a$Protocol),
+            by="margin") # both significant
+    adonis2(veg_d3b ~ as.factor(veg_hf3b$HFbin) + as.factor(veg_hf3b$Protocol),
+            by="margin") # both significant
     
     pairwise.perm.manova(resp=veg_d3, fact=veg_hf3$HFbin, p.method="holm")
     mrpp(veg_d3, grouping=as.factor(veg_hf3$HFbin)) # sig diff between groups based on mean score
+
+    pairwise.perm.manova(resp=veg_d3a, fact=veg_hf3a$HFbin, p.method="holm")
+    mrpp(veg_d3a, grouping=as.factor(veg_hf3a$HFbin)) # sig diff between groups based on mean score
+
+    pairwise.perm.manova(resp=veg_d3b, fact=veg_hf3b$HFbin, p.method="holm")
+    mrpp(veg_d3b, grouping=as.factor(veg_hf3b$HFbin)) # sig diff between groups based on mean score
     
   }
 }
 
-# 6. comparison of median disturbance across low, med, high bins
+# 6. comparison of median disturbance across low, med, high bins ####
 {
   
   # disturbance levels of each bin
-  hf_bin %>% 
-    group_by(as.factor(HFbin)) %>% 
-    summarize(meandist=mean(totdist_percent),
-              meddist=median(totdist_percent))
+  tmp <- hf_bin %>% 
+    mutate(HFbin = factor(HFbin, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))) %>% 
+    group_by(HFbin) %>% 
+    summarize(N=length(totdist_percent),
+              meddist=median(totdist_percent),
+              IQR=IQR(totdist_percent))
+  tmp
+  write.csv(x=tmp, file="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/HD across bins.csv")
   
   hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
   hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
@@ -365,25 +540,25 @@ rm(list=ls())
   hf_bin3 <- hf_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
   hf_bin3$UniqueID <- paste(hf_bin3$Protocol, hf_bin3$Site, sep="_")
   hf_bin3$HFbin <- recode(hf_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
-  summary(lmer(totdist_percent ~ HFbin + 
+  anova(lmer(totdist_percent ~ HFbin + 
                  Protocol + (1|Year) + (1|UniqueID), 
-               data=hf_bin3, REML=F)) # both bins 8 and 1 differ from 1
+               data=hf_bin3, REML=F), type=2) # both bins 8 and 1 differ from 1
   
-  ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
+ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Human Development (%)")
   
   
 }
 
-# 7. comparison of median prop exotic across low/med/high bins
+# 7. comparison of median prop exotic across low/med/high bins ####
 {
   exot_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
                         veg_exot, 
                         by=c("Protocol", "WetlandType", "Year", "Site"))
   
   exot_bin %>% 
-    group_by(as.factor(HFbin)) %>% 
+    group_by(HFbin) %>% 
     summarize(medexot=median(propexotic),
               IQRexot=IQR(propexotic))
   
@@ -397,4 +572,26 @@ rm(list=ls())
   exot_bin3$HFbin <- recode(exot_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
   exot_bin3$HFbin <- factor(exot_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
+  anova(lmer(propexotic ~ as.factor(HFbin) + 
+                 Protocol + (1|Year) + (1|UniqueID), 
+               data=exot_bin3, REML=F), type = 2) # sig effect of HF bin
+  
+  
+}
+
+# 8. linear vs poly relationship between prop exotics and HF ####
+{
+
+  exotic_m1 <- lmer(propexotic ~ totdist_percent + 
+               Protocol + (1|Year) + (1|UniqueID), 
+             data=veg_exot, REML=F) # sig effect of HF bin
+  
+  exotic_m2 <- lmer(propexotic ~ poly(totdist_percent, 2) + 
+               Protocol + (1|Year) + (1|UniqueID), 
+             data=veg_exot, REML=F) # sig effect of HF bin
+  
+  anova(exotic_m1, exotic_m2)
+  summary(exotic_m2)
+  anova(exotic_m2, type=2)
+  piecewiseSEM::rsquared(exotic_m2)
 }
