@@ -529,7 +529,7 @@ rm(list=ls())
               meddist=median(totdist_percent),
               IQR=IQR(totdist_percent))
   tmp
-  write.csv(x=tmp, file="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/HD across bins.csv")
+  # write.csv(x=tmp, file="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/HD across bins.csv")
   
   hf_bin2 <- hf_bin %>% filter(HFbin==1 | HFbin==10)
   hf_bin2$UniqueID <- paste(hf_bin2$Protocol, hf_bin2$Site, sep="_")
@@ -575,7 +575,7 @@ ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
   anova(lmer(propexotic ~ as.factor(HFbin) + 
                  Protocol + (1|Year) + (1|UniqueID), 
                data=exot_bin3, REML=F), type = 2) # sig effect of HF bin
-  
+  exot_bin3 %>% group_by(HFbin) %>% tally()
   
 }
 
