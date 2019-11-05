@@ -186,35 +186,6 @@ rm(list=ls())
   wilcox.test(x=tmp$Early, y=tmp$Late, paired=T, alternative = "less")
 }
 
-# 0. test for spatial autocorrelation - Moran's I ####
-{
-  # richness w/ ape::Moran.I
-  {
-    head(spR)
-    # create inverse distance matrix
-    rich.d <- as.matrix(dist(cbind(spR$Longitude, spR$Latitude)))
-    rich.d.inv <- 1/rich.d
-    diag(rich.d.inv) <- 0
-    rich.d.inv[1:5, 1:5] # inf values have same coords
-    rich.d.inv[is.infinite(rich.d.inv)] <- 0
-    
-    Moran.I(spR$rich, rich.d.inv) # yes spatial autocorr
-  }
-  
-  # CSI
-  {
-    head(veg_CSI_HF)
-    csi.d <- as.matrix(dist(cbind(veg_CSI_HF$Longitude, veg_CSI_HF$Latitude)))
-    csi.d.inv <- 1/csi.d
-    diag(csi.d.inv) <- 0
-    csi.d.inv[1:5, 1:5] # inf values have same coords
-    csi.d.inv[is.infinite(csi.d.inv)] <- 0
-    
-    Moran.I(veg_CSI_HF$CSI, csi.d.inv) # yes spatial autocorr
-    
-  }
-
-}
 
 # 1a. how does sp richness vary across HF gradient ####
 {
@@ -443,6 +414,73 @@ rm(list=ls())
   Moran.I(residuals(rich.poly.exot.interaction), rich.d.inv) # I=0.003
 }
 
+# 0. test for spatial autocorrelation - Moran's I ####
+{
+  
+  # save residuals from best models
+  {
+    rich.poly.resid <- data.frame(Protocol = spR$Protocol,
+                                  Site = spR$Site,
+                                  Year = spR$Year,
+                                  Lat = spR$Latitude,
+                                  Long = spR$Longitude,
+                                  UniqueID = spR$UniqueID,
+                                  Residuals=residuals(rich.poly) )
+    csi.poly.resid <- data.frame(Protocol = spR$Protocol,
+                                  Site = spR$Site,
+                                  Year = spR$Year,
+                                  Lat = spR$Latitude,
+                                  Long = spR$Longitude,
+                                  UniqueID = spR$UniqueID,
+                                  Residuals=residuals(csi.poly) )
+    rich.poly.exot.interaction.resid <- data.frame(Protocol = spR$Protocol,
+                                  Site = spR$Site,
+                                  Year = spR$Year,
+                                  Lat = spR$Latitude,
+                                  Long = spR$Longitude,
+                                  UniqueID = spR$UniqueID,
+                                  Residuals=residuals(rich.poly.exot.interaction) )
+    csi.poly.exot.interaction.resid <- data.frame(Protocol = spR$Protocol,
+                                  Site = spR$Site,
+                                  Year = spR$Year,
+                                  Lat = spR$Latitude,
+                                  Long = spR$Longitude,
+                                  UniqueID = spR$UniqueID,
+                                  Residuals=residuals(csi.poly.exot.interaction) )
+    save(rich.poly.resid, csi.poly.resid, rich.poly.exot.interaction.resid, csi.poly.exot.interaction.resid,
+        file="results/Model residuals.Rdata")
+
+    
+  }
+  # richness w/ ape::Moran.I
+  {
+    
+    head(spR)
+    # create inverse distance matrix
+    rich.d <- as.matrix(dist(cbind(spR$Longitude, spR$Latitude)))
+    rich.d.inv <- 1/rich.d
+    diag(rich.d.inv) <- 0
+    rich.d.inv[1:5, 1:5] # inf values have same coords
+    rich.d.inv[is.infinite(rich.d.inv)] <- 0
+    
+    Moran.I(spR$rich, rich.d.inv) # yes spatial autocorr
+  }
+  
+  # CSI
+  {
+    head(veg_CSI_HF)
+    csi.d <- as.matrix(dist(cbind(veg_CSI_HF$Longitude, veg_CSI_HF$Latitude)))
+    csi.d.inv <- 1/csi.d
+    diag(csi.d.inv) <- 0
+    csi.d.inv[1:5, 1:5] # inf values have same coords
+    csi.d.inv[is.infinite(csi.d.inv)] <- 0
+    
+    Moran.I(veg_CSI_HF$CSI, csi.d.inv) # yes spatial autocorr
+    
+  }
+  
+}
+
 # 4. does including % exotics improve fit of CSI model (from 2 above) ####
 {
   csi.poly # previous best
@@ -484,6 +522,8 @@ rm(list=ls())
   
   Moran.I(residuals(csi.poly.exot.interaction), rich.d.inv) # I=0.006 
 }
+
+
 
 # 5. permanovas of multivariate NMDS's ####
 {
