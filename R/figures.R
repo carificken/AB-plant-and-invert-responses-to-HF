@@ -480,13 +480,13 @@ rm(list=ls())
   exot_bin3$HFbin <- recode(exot_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
   exot_bin3$HFbin <- factor(exot_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
-  fig7 <- ggplot(exot_bin3, aes(x=HFbin, y=totdist_percent)) +
+  fig7 <- ggplot(exot_bin3, aes(x=HFbin, y=propexotic)) +
     geom_boxplot(fill="grey80") +
     labs(x="Development Level", y="Nonnative Sp. (%)") + font_sizes
   fig7
   # ggsave(plot=fig7,
-         # filename="results/figs/fig7.jpeg",
-         # width=8, height=8, units="cm")
+  # filename="results/figs/fig7.jpeg",
+  # width=8, height=8, units="cm")
   myleg <- get_legend(fig3)
   fig367 <- plot_grid(fig3 +theme(legend.position = "none"),
                       fig6,
