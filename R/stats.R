@@ -409,7 +409,6 @@ rm(list=ls())
   
 }
 
-
 # 4. does including % exotics improve fit of CSI model (from 2 above) ####
 {
   csi.poly # previous best
@@ -526,6 +525,7 @@ rm(list=ls())
   Moran.I(residuals(csi.poly.exot.interaction), rich.d.inv) # I=0.006 
   
 }
+
 
 
 # 5. permanovas of multivariate NMDS's ####
