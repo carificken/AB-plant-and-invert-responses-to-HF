@@ -25,7 +25,7 @@ rm(list=ls())
     # 39 species have poor correlation among randomization runs
     outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
     sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
-    # sp_SSI <- sp_SSI_no_outliers
+    sp_SSI <- sp_SSI_no_outliers
     }
   
   # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
