@@ -35,10 +35,15 @@ rm(list=ls())
   # calculate total disturbance ####
   hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
  
-  # SSI from 1000 randomizations
+  # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
   {
-    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
+    sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
     colnames(sp_SSI) <- c("Species", "CV")
+    
+    # 39 species have poor correlation among randomization runs
+    outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
+    sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
+    # sp_SSI <- sp_SSI_no_outliers
   }
   
   # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
@@ -46,7 +51,7 @@ rm(list=ls())
     veg_CSI_HF <- left_join(veg_pa, sp_SSI)
     veg_CSI_HF <- veg_CSI_HF %>% 
       group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
-      summarize(CSI=mean(CV, na.rm = T)) # 32 sites have na value for at least 1 sp
+      summarize(CSI=mean(CV, na.rm = T)) 
     
     veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
     veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
@@ -503,4 +508,23 @@ rm(list=ls())
   ggsave(plot=figexot7,
          filename="results/figs/figexot7.jpeg",
          width=8, height=12, units="cm")
+}
+
+# 8. CSI across bins ####
+{
+  csi_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
+                       veg_CSI_HF, 
+                       by=c("Protocol", "WetlandType", "Year", "Site"))
+
+  ggplot(filter(csi_bin, HFbin=="1" |
+                  HFbin=="8" |
+                  HFbin == "10"), aes(x=factor(HFbin, 
+                                               levels=c("1", "8", "10"), 
+                                               labels=c("Low", "Int.", "High")), y=CSI)) +
+    labs(x="Development Level", y="Niche Specialization") +
+    geom_boxplot(fill="grey90") + font_sizes
+  
+  # ggsave(filename="results/figs/Figure S2.jpeg",
+  #        height=7, width=7, units="cm")  
+  
 }

@@ -10,25 +10,30 @@ rm(list=ls())
 # prep CSI, species richness, and exotic species data frames ####
 { 
   # plant data ####
-  veg_pa <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
+  veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
   
   # load HF data ####
-  hf <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF_latlong.csv") 
+  hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
   # calculate total disturbance ####
   hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
   
-  # SSI from 1000 randomizations
+  # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
   {
-    sp_SSI <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ssi_mean_all randomizations.csv", sep=";")
+    sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
     colnames(sp_SSI) <- c("Species", "CV")
-  }
+    
+    # 39 species have poor correlation among randomization runs
+    outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
+    sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
+    # sp_SSI <- sp_SSI_no_outliers
+    }
   
   # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
   {
     veg_CSI_HF <- left_join(veg_pa, sp_SSI)
     veg_CSI_HF <- veg_CSI_HF %>% 
       group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
-      summarize(CSI=mean(CV, na.rm = T)) # 32 sites have na value for at least 1 sp
+      summarize(CSI=mean(CV, na.rm = T)) # 211 sites have na value for at least 1 sp
     
     veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
     veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
@@ -331,12 +336,21 @@ rm(list=ls())
                      (1|Year) + (1|UniqueID), 
                    data=veg_CSI_HF,
                    REML = F)
+  
+  ss <- getME(csi.poly,c("theta","fixef"))
+  m3 <- update(csi.poly,start=ss,control=lmerControl(optimizer="bobyqa",
+                                                   optCtrl=list(maxfun=2e5)))
+  getME(csi.poly, "fixef")
+  getME(m3, "fixef")
+  
   anova(csi.linear, type=2) # variance on group RE indistinguishable from zero
   anova(csi.poly, type=2) # variance on group RE indistinguishable from zero
   anova(csi.linear, csi.poly)
   AIC(csi.linear, csi.poly) # csi poly
+  AIC(csi.poly) - AIC(csi.linear)
   
   piecewiseSEM::rsquared(csi.poly) # best model
+  piecewiseSEM::rsquared(m3) # best model
   
   # old analyses - ignore
   {
@@ -490,6 +504,7 @@ rm(list=ls())
     
     
   }
+  
   # richness w/ ape::Moran.I
   {
     
@@ -519,10 +534,10 @@ rm(list=ls())
   
   
   Moran.I(residuals(rich.poly), rich.d.inv) # I = 0.011
-  Moran.I(residuals(csi.poly), rich.d.inv) # I = 0.006
+  Moran.I(residuals(csi.poly), csi.d.inv) # I = 0.012
   
   Moran.I(residuals(rich.poly.exot.interaction), rich.d.inv) # I=0.003
-  Moran.I(residuals(csi.poly.exot.interaction), rich.d.inv) # I=0.006 
+  Moran.I(residuals(csi.poly.exot.interaction), csi.d.inv) # I=0.006 
   
 }
 
@@ -637,4 +652,42 @@ ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
   summary(exotic_m2)
   anova(exotic_m2, type=2)
   piecewiseSEM::rsquared(exotic_m2)
+}
+
+# 9. comparison of median CSI across low/med/high bins ####
+{
+  csi_bin <- left_join(select(ungroup(hf_bin),Protocol, WetlandType, Year, Site, HFbin ), 
+                       veg_CSI_HF, 
+                        by=c("Protocol", "WetlandType", "Year", "Site"))
+  
+  csi_bin %>% 
+    group_by(HFbin) %>% 
+    summarize(medCSI=median(CSI),
+              IQRCSI=IQR(CSI))
+  
+  ggplot(filter(csi_bin, HFbin=="1" |
+                  HFbin=="8" |
+                  HFbin == "10"), aes(x=factor(HFbin, 
+                                               levels=c("1", "8", "10"), 
+                                               labels=c("Low", "Int.", "High")), y=CSI)) +
+    labs(x="Development Level", y="Niche Specialization") +
+    geom_boxplot(fill="grey90")
+
+  csi_bin3 <- csi_bin %>% filter(HFbin==1 | HFbin==8 | HFbin==10)
+  csi_bin3$UniqueID <- paste(csi_bin3$Protocol, csi_bin3$Site, sep="_")
+  csi_bin3$HFbin <- recode(csi_bin3$HFbin, "1"="Low", "8"="Int.", "10"="High")
+  csi_bin3$HFbin <- factor(csi_bin3$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
+  
+  anova(lmer(CSI ~ as.factor(HFbin) + 
+               Protocol + (1|Year) + (1|UniqueID), 
+             data=csi_bin3, REML=F), type = 2) # sig effect of HF bin
+  
+  tmp <- lmer(CSI ~ HFbin + 
+               Protocol + (1|Year) + (1|UniqueID), 
+             data=csi_bin3, REML=F)
+  
+  emmeans::emmeans(tmp, list(pairwise ~ HFbin), adjust = "tukey")
+  
+  csi_bin3 %>% group_by(HFbin) %>% tally()
+  
 }
