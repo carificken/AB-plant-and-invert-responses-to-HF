@@ -25,7 +25,7 @@ rm(list=ls())
     # 39 species have poor correlation among randomization runs
     outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
     sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
-    sp_SSI <- sp_SSI_no_outliers
+    # sp_SSI <- sp_SSI_no_outliers
     }
   
   # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
@@ -42,7 +42,9 @@ rm(list=ls())
   
   # make sp richness df
   {
-    spR <- veg_pa %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
+    spR <- veg_pa %>% 
+      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
+      group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
       summarize(rich=sum(PA))
     spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
     spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
@@ -54,6 +56,7 @@ rm(list=ls())
     exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
     veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
     veg_exot <- veg_exot %>% 
+      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
       group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
       tally() %>% 
       spread(key=ORIGIN, value=n) %>% 
@@ -209,6 +212,7 @@ rm(list=ls())
   anova(rich.linear, rich.poly) # poly is better
   
   piecewiseSEM::rsquared(rich.poly) # best model
+  AIC(rich.poly) - AIC(rich.linear)
   
   # old analyses - ignore
   {
@@ -306,6 +310,7 @@ rm(list=ls())
                        REML=F)
     AIC(parkland.linear, parkland.poly) # poly is better
     piecewiseSEM::rsquared(parkland.poly) # best model
+    
   }
   
   # rocky mountain - linear is better but note that HD doesn't extend to full gradient
@@ -652,6 +657,7 @@ ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
   summary(exotic_m2)
   anova(exotic_m2, type=2)
   piecewiseSEM::rsquared(exotic_m2)
+  AIC(exotic_m2) - AIC(exotic_m1)
 }
 
 # 9. comparison of median CSI across low/med/high bins ####

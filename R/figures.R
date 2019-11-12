@@ -26,15 +26,15 @@ rm(list=ls())
 }
 
 # prep CSI, species richness, and exotic species data frames ####
-{
+{ 
   # plant data ####
-  veg_pa <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/ABMI veg cleaned_latlong.csv")
-
+  veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
+  
   # load HF data ####
-  hf <- read.csv("/users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/data/cleaned/Alb wetlands HF_latlong.csv") 
+  hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
   # calculate total disturbance ####
   hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
- 
+  
   # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
   {
     sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
@@ -51,7 +51,7 @@ rm(list=ls())
     veg_CSI_HF <- left_join(veg_pa, sp_SSI)
     veg_CSI_HF <- veg_CSI_HF %>% 
       group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
-      summarize(CSI=mean(CV, na.rm = T)) 
+      summarize(CSI=mean(CV, na.rm = T)) # 211 sites have na value for at least 1 sp
     
     veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
     veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
@@ -60,7 +60,9 @@ rm(list=ls())
   
   # make sp richness df
   {
-    spR <- veg_pa %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
+    spR <- veg_pa %>% 
+      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
+      group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
       summarize(rich=sum(PA))
     spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
     spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
@@ -72,6 +74,7 @@ rm(list=ls())
     exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
     veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
     veg_exot <- veg_exot %>% 
+      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
       group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
       tally() %>% 
       spread(key=ORIGIN, value=n) %>% 
@@ -441,8 +444,8 @@ rm(list=ls())
     ordfigs <- plot_grid(myleg, ordfigs, nrow=2, ncol=1, 
                          rel_heights=c(0.2,1) )
     ordfigs
-    ggsave(ordfigs, filename="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Combined ords.jpeg",
-           height=8, width=16, units="cm")
+    # ggsave(ordfigs, filename="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/figs/Combined ords.jpeg",
+    #        height=8, width=16, units="cm")
   }
 }
 
@@ -499,9 +502,9 @@ rm(list=ls())
             labels = "auto")
   fig367 <- plot_grid(myleg, fig367, ncol=1, rel_heights = c(0.1,1.1))
   fig367
-  ggsave(plot=fig367,
-         filename="results/figs/fig367.jpeg",
-          width=6, height=12, units="cm")
+  # ggsave(plot=fig367,
+  #        filename="results/figs/fig367.jpeg",
+  #         width=6, height=12, units="cm")
   
   figexot7 <- plot_grid(exotic1, fig7, ncol=1, nrow=2, align="v", labels = "auto")
   figexot7
