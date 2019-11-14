@@ -77,6 +77,7 @@ rm(list=ls())
 {
   library(vegan)
   veg_hf <- veg_pa %>% 
+    filter(Species %in% sp_SSI$Species) %>% 
     select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
   veg_hf <- veg_hf %>% 
     spread(key=Species, value=PA) %>% 
