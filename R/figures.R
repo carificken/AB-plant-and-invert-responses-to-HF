@@ -18,11 +18,11 @@ rm(list=ls())
     panel.grid = element_blank())
   
   font_sizes <- theme(
-    axis.text=element_text(size=6, color="black"),
-    axis.title=element_text(size=8),
-    legend.text=element_text(size=6),
-    legend.title=element_text(size=8),
-    strip.text=element_text(size=6))
+    axis.text=element_text(size=10, color="black"),
+    axis.title=element_text(size=12),
+    legend.text=element_text(size=10),
+    legend.title=element_text(size=12),
+    strip.text=element_text(size=10))
 }
 
 # prep CSI, species richness, and exotic species data frames ####
@@ -106,7 +106,9 @@ rm(list=ls())
     hf_bin <- hf_tot
     hf_bin$HFbin <- ntile(hf_bin$totdist_percent, n=10) 
     hf_bin %>% group_by(as.factor(HFbin)) %>% summarize(meandist=mean(totdist_percent),
-                                                        meddist=median(totdist_percent))
+                                                        meddist=median(totdist_percent),
+                                                        min=min(totdist_percent),
+                                                        max=max(totdist_percent))
     veg_hf <- left_join(veg_hf, 
                         select(hf_bin, -totdist_percent), 
                         by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
@@ -145,9 +147,9 @@ rm(list=ls())
   fig1 <- ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(color="grey70", alpha=0.5) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+                method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
@@ -161,10 +163,10 @@ rm(list=ls())
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5, aes(color=NRNAME), show.legend = F) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
     # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-    #             method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    #             method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     facet_wrap(~NRNAME) +
     theme_classic() +
@@ -174,10 +176,10 @@ rm(list=ls())
   ggplot(spR, aes(x=totdist_percent, y=rich)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(alpha=0.5, aes(color=WetlandType), show.legend = F) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
     # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-    #             method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+    #             method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     facet_wrap(~WetlandType) +
     theme_classic() +
@@ -191,9 +193,9 @@ rm(list=ls())
   fig2 <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
     labs(x="Total Human Development (%)", y="Niche Specialization") +
     geom_point(alpha=0.5, color="grey70") + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
-                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+                method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
@@ -224,7 +226,7 @@ rm(list=ls())
     ggtitle("Protocol") +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
     geom_point(alpha=0.5) + 
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F) +
     facet_wrap(~Protocol) +
     theme_classic() +
     theme(legend.position = "none")
@@ -234,7 +236,7 @@ rm(list=ls())
     ggtitle("Wetland Class") +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
     geom_point(alpha=0.5) +
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F) +
     theme_classic() +
     facet_wrap(~WetlandType) +
     theme(legend.position = "none")
@@ -244,7 +246,7 @@ rm(list=ls())
     ggtitle("Natural Region") +
     labs(x="Total Human Development (%)", y="CSI to human develpoment") +
     geom_point(alpha=0.5) +
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F) +
     theme_classic() +
     facet_wrap(~NRNAME) +
     theme(legend.position = "none")
@@ -254,9 +256,9 @@ rm(list=ls())
 {
   exotic1 <- ggplot(veg_exot, aes(x=totdist_percent, y=propexotic)) +
     geom_point(alpha=0.5, color="grey70") +
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
-                method="lm", formula=y~poly(x,2), se=F, size=0.5, color=1) +
+                method="lm", formula=y~poly(x,2, raw=T), se=F, size=0.5, color=1) +
     
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     labs(x="Total Development (%)", y="Nonnative Sp. (%)") +
@@ -264,36 +266,19 @@ rm(list=ls())
     theme(legend.position = "top") + font_sizes
   exotic1
   
-  exotic2 <- ggplot(veg_exot, aes(x=rich, y=propexotic)) +
-    geom_point(alpha=0.5, color="grey70") +
-    labs(x="Sp. Rich.", y="Exotic Sp. (%)") 
+
   
-  exotic3 <- ggplot(veg_exot, aes(x=CSI, y=propexotic)) +
-    geom_point(alpha=0.5, color="grey70") +
-    geom_smooth(method="lm",se=F, color=1) +
-    geom_smooth(data=veg_exot, aes(x=CSI, y=propexotic, linetype=Protocol),
-                method="lm", se=F, size=0.5, color=1) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
-    labs(x="CSI", y="Exotic Sp. (%)") +
-    theme(legend.position = "top")
-  myleg <- get_legend(exotic1)
-  exotp <- plot_grid(exotic1 + theme(legend.position = "none"), 
-                     exotic2,
-                     exotic3 + theme(legend.position = "none"), 
-                     nrow=1, ncol=3,
-                     labels = "auto")
-  plot_grid(myleg, exotp, ncol=1, nrow=2, rel_heights = c(0.05,1))
-  
-}
+
+  }
 
 # 3. rich vs HF x Exotics ####
 {
   fig3 <- ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
     geom_point(alpha=0.8, aes(color=propexotic), size=1) +
     labs(x="Total Human Development (%)", y="Species Richness") +
-    geom_smooth(method="lm", formula=y~poly(x,2),  color=1, se=F) + 
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T),  color=1, se=F) + 
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-                method="lm", formula=y~poly(x,2), se=F, color=1, size=0.5) +
+                method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     scale_color_gradient(low="skyblue", high="red", name="% Exotics") +
     theme_classic() +
@@ -317,9 +302,9 @@ rm(list=ls())
   fig4 <- ggplot(veg_exot, aes(x=totdist_percent, y=CSI)) +
     geom_point(alpha=0.8, aes(color=propexotic), size=3) +
     labs(x="Total Human Development (%)", y="CSI") +
-    geom_smooth(method="lm", formula=y~poly(x,2), se=F, color=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
-                method="lm",se=F, formula=y~poly(x,2), size=0.5, color=1) +  
+                method="lm",se=F, formula=y~poly(x,2, raw=T), size=0.5, color=1) +  
     scale_linetype_manual(values=c("dashed", "dotdash")) +
     scale_color_gradient(low="yellow", high="red", name="% Exotics") +
     theme(legend.position = "top",
@@ -391,10 +376,27 @@ rm(list=ls())
   
   # NMDS of most, least, and intermediate dist sites
   {
+    # can't get this to converge
+    veg.nmds_final3X <- metaMDS(veg_hf3[,9:ncol(veg_hf3)], 
+                               distance="jaccard", binary=T, 
+                               k=5,trymax=500,
+                               maxit=500, sratmax=0.99999999, sfgrmin=1e-8)
+    
+    veg.nmds_final3Xa <- metaMDS(veg_hf3[,9:ncol(veg_hf3)], 
+                                distance="jaccard", binary=T, 
+                                k=5,trymax=500,
+                                maxit=500, sratmax=0.9999999, sfgrmin=1e-8, previous.best=veg.nmds_final3X)
+    
+    # this converges
     veg.nmds_final3 <- metaMDS(veg_hf3[,9:ncol(veg_hf3)], 
                                distance="jaccard", binary=T, 
-                               k=5,trymax=100,
-                               maxit=500, sratmax=0.999999)
+                               k=6,trymax=100,
+                               maxit=500, sratmax=0.99999999, sfgrmin=1e-8)
+    # veg.nmds_final3a <-  metaMDS(veg_hf3[,9:ncol(veg_hf3)], 
+    #                             distance="jaccard", binary=T, 
+    #                             k=6,trymax=100,
+    #                             maxit=500, sratmax=0.99999999, sfgrmin=1e-8, previous.best = veg.nmds_final3)
+    
     
     # extract site scores and convert to df
     veg.scores3 <- data.frame(scores(veg.nmds_final3, "sites"))
@@ -505,12 +507,30 @@ rm(list=ls())
   # ggsave(plot=fig367,
   #        filename="results/figs/fig367.jpeg",
   #         width=6, height=12, units="cm")
+  # two panel figure
+  myleg <- get_legend(exotic1)
+
   
-  figexot7 <- plot_grid(exotic1, fig7, ncol=1, nrow=2, align="v", labels = "auto")
+  fig1_twopanel <- plot_grid(myleg, fig1_twopanel, 
+                             ncol=1, nrow=2,
+                             rel_heights=c(0.1,1))
+  
+  fig1_twopanel
+  # ggsave(plot=fig1_twopanel,
+  #        filename = "results/figs/fig1 - two panel.jpeg",
+  #        width=10, height=15, units="cm")
+  
+  figexot7 <- plot_grid(exotic1 + theme(legend.position = "none"), 
+                        fig7, 
+                        ncol=1, nrow=2, align="v", labels = "auto")
+  figexot7 <- plot_grid(myleg, figexot7, 
+                        ncol=1, nrow=2,
+                        rel_heights=c(0.1,1))
   figexot7
   ggsave(plot=figexot7,
          filename="results/figs/figexot7.jpeg",
-         width=8, height=12, units="cm")
+         width=10, height=15, units="cm")
+  
 }
 
 # 8. CSI across bins ####
@@ -530,4 +550,27 @@ rm(list=ls())
   # ggsave(filename="results/figs/Figure S2.jpeg",
   #        height=7, width=7, units="cm")  
   
+}
+
+# 9. native vs nonnative vs total richness (not prop) across gradient
+{
+  veg_exot2 <- veg_exot %>% mutate(richexot=round(rich*(propexotic/100),0)) %>% 
+    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, "Total"=rich, "Nonnative"=richexot) %>% 
+    mutate(Native=Total-Nonnative) %>% 
+    gather(., key="Type", value="Richness", 7:9)
+    
+  nat_nonnat_rich <- ggplot(veg_exot2, aes(x=totdist_percent, y=Richness, color=Type)) +
+    geom_point(alpha=0.5, size=1) +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F) +
+    scale_color_brewer(palette="Dark2") +
+    labs(x="Total Human Development (%)", y="Richness") +
+    theme_classic() +
+    font_sizes +  transparent_legend + transparent_plot +
+    theme(legend.position = "top",
+          legend.title = element_blank())
+  nat_nonnat_rich
+  
+  # ggsave(plot=nat_nonnat_rich,
+  #        filename = "results/figs/native and nonnative richness.jpeg",
+  #        width=10, height=10, units="cm")
 }

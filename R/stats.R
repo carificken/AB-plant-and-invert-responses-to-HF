@@ -204,7 +204,7 @@ rm(list=ls())
                         Protocol + 
                         (1|Year) + (1|UniqueID), 
                       data=spR, REML=F)
-  rich.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+  rich.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                       Protocol + 
                       (1|Year) + (1|UniqueID), 
                     data=spR, REML=F)
@@ -255,7 +255,7 @@ rm(list=ls())
                            (1|Year) + (1|UniqueID), 
                          data=filter(spR, NRNAME=="Boreal"), 
                          REML=F)
-    boreal.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+    boreal.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                          Protocol + 
                          (1|Year) + (1|UniqueID), 
                        data=filter(spR, NRNAME=="Boreal"), 
@@ -272,7 +272,7 @@ rm(list=ls())
                           data=filter(spR, NRNAME=="Foothills"), 
                           REML=F)
     
-    foothills.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+    foothills.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                           Protocol + 
                           (1|Year), 
                         data=filter(spR, NRNAME=="Foothills"), 
@@ -288,7 +288,7 @@ rm(list=ls())
                            (1|Year) + (1|UniqueID), 
                          data=filter(spR, NRNAME=="Grassland"), 
                          REML=F)
-    grass.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+    grass.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                          Protocol + 
                          (1|Year) + (1|UniqueID), 
                        data=filter(spR, NRNAME=="Grassland"), 
@@ -304,7 +304,7 @@ rm(list=ls())
                            (1|Year) + (1|UniqueID), 
                          data=filter(spR, NRNAME=="Parkland"), 
                          REML=F)
-    parkland.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+    parkland.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                          Protocol + 
                          (1|Year) + (1|UniqueID), 
                        data=filter(spR, NRNAME=="Parkland"), 
@@ -321,7 +321,7 @@ rm(list=ls())
                               (1|Year) + (1|UniqueID), 
                             data=filter(spR, NRNAME=="Rocky Mountain"), 
                             REML=F)
-    mtn.poly <- lmer(rich ~ poly(totdist_percent,2) + 
+    mtn.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                             Protocol + 
                             (1|Year) + (1|UniqueID), 
                           data=filter(spR, NRNAME=="Rocky Mountain"), 
@@ -337,7 +337,7 @@ rm(list=ls())
                        (1|Year) + (1|UniqueID), 
                      data=veg_CSI_HF,
                      REML = F)
-  csi.poly <- lmer(CSI ~ poly(totdist_percent,2) + 
+  csi.poly <- lmer(CSI ~ poly(totdist_percent,2, raw=T) + 
                      Protocol + 
                      (1|Year) + (1|UniqueID), 
                    data=veg_CSI_HF,
@@ -395,7 +395,7 @@ rm(list=ls())
 {
   rich.poly # previous best
   # refit previous best w/ updated df that includes exotic
-  rich.polya <- lmer(rich ~ poly(totdist_percent,2) + 
+  rich.polya <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                         Protocol +
                         (1|Year) + (1|UniqueID), 
                       data=veg_exot,
@@ -405,13 +405,13 @@ rm(list=ls())
                            (1|Year) + (1|UniqueID), 
                          data=veg_exot,
                          REML=F)
-  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2) + 
+  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
                            propexotic + 
                            Protocol +
                            (1|Year) + (1|UniqueID), 
                          data=veg_exot,
                          REML=F)
-  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2) * propexotic + 
+  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2, raw=T) * propexotic + 
                                        Protocol +
                                        (1|Year) + (1|UniqueID), 
                                      data=veg_exot,
@@ -546,8 +546,6 @@ rm(list=ls())
   Moran.I(residuals(csi.poly.exot.interaction), csi.d.inv) # I=0.006 
   
 }
-
-
 
 # 5. permanovas of multivariate NMDS's ####
 {
@@ -697,4 +695,46 @@ ggplot(hf_bin3, aes(x=HFbin, y=totdist_percent)) +
   
   csi_bin3 %>% group_by(HFbin) %>% tally()
   
+}
+
+# 10. trends in native vs nonnative richness over HD gradient ####
+{
+  veg_exot2 <- veg_exot %>% mutate(richexot=round(rich*(propexotic/100),0)) %>% 
+    select(NRNAME, Protocol, WetlandType, Site, Year, UniqueID, totdist_percent, 
+           "Total"=rich, "Nonnative"=richexot) %>% 
+    mutate(Native=Total-Nonnative) 
+  veg_exot2$Year <- as.factor(veg_exot$Year)
+  
+  head(veg_exot2)
+  
+  # nonnative species
+  nnr.linear <- lmer(Nonnative ~ totdist_percent + 
+                        Protocol + 
+                        (1|Year) + (1|UniqueID), 
+                      data=veg_exot2, REML=F)
+  nnr.poly <- lmer(Nonnative ~ poly(totdist_percent,2, raw=T) + 
+                      Protocol + 
+                      (1|Year) + (1|UniqueID), 
+                    data=veg_exot2, REML=F)
+  anova(nnr.linear, type=2) # RE of unique site ID should be kept
+  anova(nnr.poly, type=2) # RE of unique site ID should be kept
+  anova(nnr.linear, nnr.poly) # poly is better
+  summary(nnr.poly)
+  piecewiseSEM::rsquared(nnr.poly) RAIC(nnr.poly) - AIC(nnr.linear)
+  
+  # native species
+  nr.linear <- lmer(Native ~ totdist_percent + 
+                       Protocol + 
+                       (1|Year) + (1|UniqueID), 
+                     data=veg_exot2, REML=F)
+  nr.poly <- lmer(Native ~ poly(totdist_percent,2, raw=T) + 
+                     Protocol + 
+                     (1|Year) + (1|UniqueID), 
+                   data=veg_exot2, REML=F)
+  anova(nr.linear, type=2) # RE of unique site ID should be kept
+  anova(nr.poly, type=2) # RE of unique site ID should be kept
+  anova(nr.linear, nr.poly) # poly is better
+  summary(nr.poly)
+  piecewiseSEM::rsquared(nr.poly) 
+  AIC(nr.poly) - AIC(nr.linear)
 }
