@@ -633,6 +633,40 @@ rm(list=ls())
   
 }
 
+# fig s4. native vs nonnative vs total richness (not prop) across gradient
+{
+  veg_exot2 <- veg_exot %>% mutate(richexot=round(rich*(propexotic/100),0)) %>% 
+    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, "Total"=rich, "Nonnative"=richexot) %>% 
+    mutate(Native=Total-Nonnative) %>% 
+    gather(., key="Type", value="Richness", 7:9)
+  
+  nat_rich <- ggplot(filter(veg_exot2, Type=="Native"), aes(x=totdist_percent, y=Richness)) +
+    geom_point(alpha=0.5, size=1, col="grey70") +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, col=1) +
+    labs(x="Total Human Development (%)", y="Native Species Richness") +
+    # lims(y=c(0,105)) +
+    theme_classic() +
+    font_sizes +  transparent_legend + transparent_plot +
+    theme(legend.position = "top",
+          legend.title = element_blank())
+  nat_rich
+  nonnat_rich <- ggplot(filter(veg_exot2, Type=="Nonnative"), aes(x=totdist_percent, y=Richness)) +
+    geom_point(alpha=0.5, size=1, col="grey70") +
+    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, col=1) +
+    labs(x="Total Human Development (%)", y="Nonnative Species Richness") +
+    lims(y=c(0,105)) +
+    theme_classic() +
+    font_sizes +  transparent_legend + transparent_plot +
+    theme(legend.position = "top",
+          legend.title = element_blank())
+  nonnat_rich
+  native_nonnative_richness <- plot_grid(nat_rich, nonnat_rich, labels="auto", ncol=2)
+  
+  # ggsave(plot=native_nonnative_richness,
+  #        filename = "results/figs/native and nonnative richness.jpeg",
+  #        width=15, height=8, units="cm")
+}
+
 # rich vs HF x Exotics ####
 {
   fig3 <- ggplot(veg_exot, aes(x=totdist_percent, y=rich)) +
@@ -708,25 +742,3 @@ rm(list=ls())
   
 }
 
-# 9. native vs nonnative vs total richness (not prop) across gradient
-{
-  veg_exot2 <- veg_exot %>% mutate(richexot=round(rich*(propexotic/100),0)) %>% 
-    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, "Total"=rich, "Nonnative"=richexot) %>% 
-    mutate(Native=Total-Nonnative) %>% 
-    gather(., key="Type", value="Richness", 7:9)
-    
-  nat_nonnat_rich <- ggplot(veg_exot2, aes(x=totdist_percent, y=Richness, color=Type)) +
-    geom_point(alpha=0.5, size=1) +
-    geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F) +
-    scale_color_brewer(palette="Dark2") +
-    labs(x="Total Human Development (%)", y="Richness") +
-    theme_classic() +
-    font_sizes +  transparent_legend + transparent_plot +
-    theme(legend.position = "top",
-          legend.title = element_blank())
-  nat_nonnat_rich
-  
-  # ggsave(plot=nat_nonnat_rich,
-  #        filename = "results/figs/native and nonnative richness.jpeg",
-  #        width=10, height=10, units="cm")
-}
