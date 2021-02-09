@@ -1,130 +1,22 @@
-# This file runs the stats
+# This file runs the stats to analyze relationships between HD vs richness and niche specialization
 
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
 library(ape)
 library(lmerTest)
+library(vegan)
 
 rm(list=ls())
 
-# prep CSI, species richness, and exotic species data frames ####
-{ 
-  # plant data ####
-  veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
-  
-  # load HF data ####
-  hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
-  # calculate total disturbance ####
-  hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
-  
-  # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
-  {
-    sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
-    colnames(sp_SSI) <- c("Species", "CV")
-    
-    # 39 species have poor correlation among randomization runs
-    outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
-    sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
-    # sp_SSI <- sp_SSI_no_outliers
-    }
-  
-  # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
-  {
-    veg_CSI_HF <- left_join(veg_pa, sp_SSI)
-    veg_CSI_HF <- veg_CSI_HF %>% 
-      group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
-      summarize(CSI=mean(CV, na.rm = T)) # 211 sites have na value for at least 1 sp
-    
-    veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
-    veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
-    
-  }
-  
-  # make sp richness df
-  {
-    spR <- veg_pa %>% 
-      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
-      group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
-      summarize(rich=sum(PA))
-    spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
-    spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
-    
-  }
-  
-  # exotic species
-  {
-    exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
-    veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
-    veg_exot <- veg_exot %>% 
-      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
-      group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
-      tally() %>% 
-      spread(key=ORIGIN, value=n) %>% 
-      replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
-      rowwise() %>% 
-      mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
-             propexotic=100*(Exotic/rich))
-    
-    veg_exot <- left_join(veg_CSI_HF, 
-                          veg_exot, 
-                          by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
-      select(-Exotic, -Native, -`Unknown/Undetermined`)
-}
-  
+# load df with richness, CSI, and prop exotic sp
+{
+  veg_df <- read.csv("data/cleaned/veg_rich_CSI_exot.csv")
 }
 
-# prep df for NMDS with HD levels based on hd %; calculate distance measures ####
-{
-  library(vegan)
-  veg_hfa <- veg_pa %>% 
-    filter(Species %in% sp_SSI$Species) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-  veg_hfa <- veg_hfa %>% 
-    spread(key=Species, value=PA) %>% 
-    gather(key=Species, value=PA, 8:ncol(.)) %>% 
-    replace_na(list(PA=0)) %>% 
-    spread(key=Species, value=PA) 
-  
-  veg_hfa <- left_join(veg_hfa, 
-                       hf_tot,  
-                       by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
-  
-  # veg_hf2 has most & least dist communities
-  veg_hf2a <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90) %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", "High")) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
-    select(-totdist_percent)
-  # veg_hf2a %>% group_by(HFbin) %>% tally()
-  
-  sptokeep2 <- colSums(veg_hf2a[,9:ncol(veg_hf2a)]) %>% data.frame() 
-  sptokeep2$Species <- rownames(sptokeep2)
-  colnames(sptokeep2) <- c("Obs", "Species")
-  sptokeep2 <-  filter(sptokeep2, Obs > 1)
-  veg_hf2a <- veg_hf2a %>% 
-    gather(Species, PA, 9:ncol(.)) %>% 
-    filter(Species %in% sptokeep2$Species) %>% 
-    spread(Species, PA)
-  
-  # veg_hf3 has most, least, and intermed dist communities
-  veg_hf3a <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
-    select(-totdist_percent)
-  
-  # veg_hf3a %>% group_by(HFbin) %>% tally()
-  
-  sptokeep3 <- colSums(veg_hf3a[,9:ncol(veg_hf3a)]) %>% data.frame() 
-  sptokeep3$Species <- rownames(sptokeep3)
-  colnames(sptokeep3) <- c("Obs", "Species")
-  sptokeep3 <-  filter(sptokeep3, Obs > 1)
-  veg_hf3a <- veg_hf3a %>% 
-    gather(Species, PA, 9:ncol(.)) %>% 
-    filter(Species %in% sptokeep3$Species) %>% 
-    spread(Species, PA)
-  
-  veg_d2a <- vegdist(veg_hf2a[,9:ncol(veg_hf2a)], method="jaccard", binary=T)
-  veg_d3a <- vegdist(veg_hf3a[,9:ncol(veg_hf3a)], method="jaccard", binary=T)
-}
+
+
+# select only 1 sampling event for each site
+
 
 # comparing true vs observed sp richness ####
 {
@@ -347,35 +239,38 @@ rm(list=ls())
 
 # how many sites and species ####
 {
-  spR %>% distinct(Protocol, Site) %>% nrow() # 1585 unique wetlands (some sampled >1x)
-  spR %>% group_by(Protocol, Site) %>% 
+  veg_df %>% distinct(Protocol, Site) %>% nrow() # 1582 unique wetlands (some sampled >1x)
+  veg_df %>% group_by(Protocol, Site) %>% 
     tally() %>% 
     filter(n>1) %>% 
     arrange(desc(n)) %>% 
     nrow() # 471 sampled 2x or 3x
-  nrow(spR) # unique sampling events
+  nrow(veg_df) # unique sampling events
   
   # how much time and HD in between samplings
   {  
-    spR %>% filter(Site=="1500") # sampled 3x
+    veg_df %>% filter(Site=="1500") # sampled 3x
     
-    doublesites <- spR %>% group_by(Protocol, Site) %>% 
+    doublesites <- veg_df %>% group_by(Protocol, Site) %>% 
     tally() %>% 
     filter(n>1) %>% 
     arrange(desc(n)) %>% 
     filter(Site!="1500")
 
-  dubsamp <- left_join(select(doublesites, -n), spR, by=c("Protocol", "Site")) %>% select(-Latitude, -Longitude)
+  dubsamp <- left_join(select(doublesites, -n), veg_df, by=c("Protocol", "Site")) %>% select(-Latitude, -Longitude)
   dubsamp$Year2 <- rep(c("Early", "Late"), times=nrow(dubsamp)/2)
 
   # on average how many years between sampling periods
-  tmp1 <- dubsamp %>% select(-rich, -totdist_percent, -WetlandType) %>% spread(key=Year2, value=Year) %>% mutate(yrchange=(Late-Early))
+  tmp1 <- dubsamp %>% 
+    select(-rich, -totdist_percent, -WetlandType, -CSI, -propexotic) %>% 
+    spread(key=Year2, value=Year) %>% mutate(yrchange=(Late-Early))
   mean(tmp1$yrchange)
   
   }
   
   # total disturbance (area_km2) in early and late sampling year
-  tmp <- dubsamp %>% select(-Year, -rich, -WetlandType) %>% spread(key=Year2, value=totdist_percent)
+  tmp <- dubsamp %>% select(-Year, -rich, -WetlandType, -CSI, -propexotic) %>% 
+    spread(key=Year2, value=totdist_percent)
   mean(tmp$Late-tmp$Early)
   head(tmp)
   head(dubsamp)
@@ -388,58 +283,49 @@ rm(list=ls())
 
 # 1a. how does sp richness vary across HF gradient ####
 {
-  spR$Year <- as.factor(spR$Year)
-  # should HF be linear or quad? and does ran ef variance differ from zero?
-  rich.linear <- lmer(rich ~ totdist_percent + 
-                        Protocol + 
-                        (1|Year) + (1|UniqueID), 
-                      data=spR, REML=F)
-  rich.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
-                      Protocol + 
-                      (1|Year) + (1|UniqueID), 
-                    data=spR, REML=F)
-
-  anova(rich.linear, type=2) # RE of unique site ID should be kept
-  anova(rich.poly, type=2) # RE of unique site ID should be kept
-  anova(rich.linear, rich.poly) # poly is better
+  veg_df$Year <- as.factor(veg_df$Year)
   
-  # rich.polyb <- lmer(rich ~ totdist_percent + I(totdist_percent^2) + 
-  #                      Protocol + 
-  #                      (1|Year) + (1|UniqueID), 
-  #                    data=spR, REML=F)
-  
-  piecewiseSEM::rsquared(rich.poly) # best model
-  AIC(rich.poly) - AIC(rich.linear)
-  
-  # old analyses - ignore
+  # terrestrial protocol
   {
-    # anova(lme(rich ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
-    #           random=~1|UniqueID,
-    #           data=spR), type="marginal")
-    # 
-    # rich.poly1 <- lmer(rich ~ poly(totdist_percent,2) + 
-    #                      Protocol + 
-    #                      Latitude + Longitude +
-    #                      (1|Year) + (1|UniqueID), 
-    #                    data=spR, REML=F)
-    # rich.poly2 <- lmer(rich ~ poly(totdist_percent,2) + 
-    #                      Protocol +
-    #                      (1|Year) + (1|UniqueID), 
-    #                    data=spR, REML=F)
-    # rich.poly3 <- lmer(rich ~ poly(totdist_percent,2) + 
-    #                      (1|Year) + (1|UniqueID), 
-    #                    data=spR, REML=F)
-    # 
-    # AIC(rich.poly, rich.poly1, rich.poly2, rich.poly3)  
-    # summary(rich.poly2) # latitudinal climate variables not important for richness
-    # piecewiseSEM::rsquared(rich.poly2)
-    # 
-    # Moran.I(residuals(rich.poly2), rich.d.inv)
+    # should HF be linear or quad? and does ran ef variance differ from zero?
+    ter.rich.linear <- lmer(rich ~ totdist_percent + 
+                          (1|Year) + (1|UniqueID), 
+                        data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    ter.rich.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
+                        (1|Year) + (1|UniqueID), 
+                        data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    anova(ter.rich.linear, type=2) # RE of unique site ID should be kept
+    anova(ter.rich.poly, type=2) # RE of unique site ID should be kept
+    anova(ter.rich.linear, ter.rich.poly) # poly is better
+    
+    piecewiseSEM::rsquared(ter.rich.poly) # best model
+    AIC(ter.rich.poly) - AIC(ter.rich.linear)
   }
+  
+  # wetland protocol
+  {
+    # should HF be linear or quad? and does ran ef variance differ from zero?
+    wet.rich.linear <- lmer(rich ~ totdist_percent + 
+                              (1|Year) + (1|UniqueID), 
+                            data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    wet.rich.poly <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
+                            (1|Year) + (1|UniqueID), 
+                          data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    anova(wet.rich.linear, type=2) # RE of unique site ID should be kept
+    anova(wet.rich.poly, type=2) # RE of unique site ID should be kept
+    anova(wet.rich.linear, wet.rich.poly) # poly is better
+    
+    piecewiseSEM::rsquared(wet.rich.poly) # best model
+    AIC(wet.rich.poly) - AIC(wet.rich.linear)
+  }
+
 
 }
 
 # 1b. how does sp richness vary across HF gradient within each NR ####
+# *****    not updated to separate wetland vs ter protocols ****
 {
   spR$Year <- as.factor(spR$Year)
   table(spR$NRNAME)
@@ -528,219 +414,290 @@ rm(list=ls())
 
 # 2. How does CSI vary with HF ####
 {
-  csi.linear <- lmer(CSI ~ totdist_percent + 
-                       Protocol + 
-                       (1|Year) + (1|UniqueID), 
-                     data=veg_CSI_HF,
-                     REML = F)
-  csi.poly <- lmer(CSI ~ poly(totdist_percent,2, raw=T) + 
-                     Protocol + 
-                     (1|Year) + (1|UniqueID), 
-                   data=veg_CSI_HF,
-                   REML = F)
-  
-  ss <- getME(csi.poly,c("theta","fixef"))
-  m3 <- update(csi.poly,start=ss,control=lmerControl(optimizer="bobyqa",
-                                                   optCtrl=list(maxfun=2e5)))
-  getME(csi.poly, "fixef")
-  getME(m3, "fixef")
-  
-  anova(csi.linear, type=2) # variance on group RE indistinguishable from zero
-  anova(csi.poly, type=2) # variance on group RE indistinguishable from zero
-  anova(csi.linear, csi.poly)
-  AIC(csi.linear, csi.poly) # csi poly
-  AIC(csi.poly) - AIC(csi.linear)
-  
-  piecewiseSEM::rsquared(csi.poly) # best model
-  piecewiseSEM::rsquared(m3) # best model
-  
-  # old analyses - ignore
+  # terrestrial protocol
   {
-    # library(nlme)
-    # anova(lme(CSI ~ poly(totdist_percent,2) + Protocol + Latitude + Longitude + Year,
-    #           random=~1|UniqueID,
-    #           data=veg_CSI_HF), type="marginal")
-    # 
-    # csi.poly1 <- lmer(CSI ~ poly(totdist_percent,2) + 
-    #                     Protocol + 
-    #                     Latitude + Longitude +
-    #                     (1|Year) + (1|UniqueID), 
-    #                   data=veg_CSI_HF,
-    #                   REML = F)
-    # csi.poly2 <- lmer(CSI ~ poly(totdist_percent,2) + 
-    #                     Protocol +
-    #                     (1|Year) + (1|UniqueID), 
-    #                   data=veg_CSI_HF,
-    #                   REML = F)
-    # csi.poly3 <- lmer(CSI ~ poly(totdist_percent,2) +
-    #                     (1|Year) + (1|UniqueID), 
-    #                   data=veg_CSI_HF,
-    #                   REML = F)
-    # 
-    # AIC(csi.poly, csi.poly1, csi.poly2, csi.poly3)
-    # 
-    # summary(csi.poly1) # lat/long coords are important
-    # piecewiseSEM::rsquared(csi.poly1)
+    ter.csi.linear <- lmer(CSI ~ totdist_percent + 
+                         (1|Year) + (1|UniqueID), 
+                       data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    ter.csi.poly <- lmer(CSI ~ poly(totdist_percent,2, raw=T) + 
+                       (1|Year) + (1|UniqueID), 
+                     data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    
+    ss <- getME(ter.csi.poly,c("theta","fixef"))
+    m3 <- update(ter.csi.poly,start=ss,control=lmerControl(optimizer="bobyqa",
+                                                       optCtrl=list(maxfun=2e5)))
+    getME(ter.csi.poly, "fixef")
+    getME(m3, "fixef")
+    
+    anova(ter.csi.linear, type=2) # variance on group RE indistinguishable from zero
+    anova(ter.csi.poly, type=2) # variance on group RE different from zero
+    anova(ter.csi.linear, ter.csi.poly)
+    AIC(ter.csi.linear, ter.csi.poly) # csi poly
+    AIC(ter.csi.poly) - AIC(ter.csi.linear)
+    
+    piecewiseSEM::rsquared(ter.csi.poly) # best model
+    piecewiseSEM::rsquared(m3) # best model
     
   }
   
+  # wetland protocol
+  {
+    wet.csi.linear <- lmer(CSI ~ totdist_percent + 
+                             (1|Year) + (1|UniqueID), 
+                           data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    wet.csi.poly <- lmer(CSI ~ poly(totdist_percent,2, raw=T) + 
+                           (1|Year) + (1|UniqueID), 
+                         data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    anova(wet.csi.linear, type=2) # variance on group RE different from zero
+    anova(wet.csi.poly, type=2) # variance on group RE different from zero
+    anova(wet.csi.linear, wet.csi.poly)
+    AIC(wet.csi.linear, wet.csi.poly) # csi poly
+    AIC(wet.csi.poly) - AIC(wet.csi.linear)
+    
+    piecewiseSEM::rsquared(wet.csi.poly) # best model
+
+  }
 
 }
 
 # 3. Does including % exotics improve fit of richness model (from 1 above) ####
 {
-  rich.poly # previous best
-  # refit previous best w/ updated df that includes exotic
-  rich.polya <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
-                        Protocol +
-                        (1|Year) + (1|UniqueID), 
-                      data=veg_exot,
-                      REML=F)
-  rich.exot.only <- lmer(rich ~ propexotic + 
-                           Protocol +
-                           (1|Year) + (1|UniqueID), 
-                         data=veg_exot,
-                         REML=F)
-  rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
-                           propexotic + 
-                           Protocol +
-                           (1|Year) + (1|UniqueID), 
-                         data=veg_exot,
-                         REML=F)
-  rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2, raw=T) * propexotic + 
-                                       Protocol +
-                                       (1|Year) + (1|UniqueID), 
-                                     data=veg_exot,
-                                     REML=F)
-  
-  AIC(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
-  anova(rich.polya, rich.exot.only, rich.poly.exot, rich.poly.exot.interaction)
-  summary(rich.poly.exot.interaction)
-  anova(rich.poly.exot.interaction, type=2)
-  piecewiseSEM::rsquared(rich.polya)
-  
-  anova(rich.polya, rich.poly.exot.interaction)
+  # terrestrial protocol
+  {
+    ter.rich.poly # previous best
 
-  piecewiseSEM::rsquared(rich.poly.exot.interaction) # best model
+    ter.rich.exot.only <- lmer(rich ~ propexotic + 
+                             (1|Year) + (1|UniqueID), 
+                             data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    ter.rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
+                             propexotic + 
+                             (1|Year) + (1|UniqueID), 
+                             data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    ter.rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2, raw=T) * propexotic + 
+                                         (1|Year) + (1|UniqueID), 
+                                       data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    
+    AIC(ter.rich.poly, ter.rich.exot.only, ter.rich.poly.exot, ter.rich.poly.exot.interaction)
+    anova(ter.rich.poly, ter.rich.exot.only, ter.rich.poly.exot, ter.rich.poly.exot.interaction)
+    summary(ter.rich.poly.exot.interaction)
+    anova(ter.rich.poly.exot.interaction, type=2)
+    piecewiseSEM::rsquared(ter.rich.poly)
+    
+    anova(ter.rich.poly, ter.rich.poly.exot.interaction)
+    
+    piecewiseSEM::rsquared(ter.rich.poly.exot.interaction) # best model
+    
+  }
   
+  # Wetland protocol
+  {
+    wet.rich.poly # previous best
+    wet.rich.exot.only <- lmer(rich ~ propexotic + 
+                                 (1|Year) + (1|UniqueID), 
+                               data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    wet.rich.poly.exot <- lmer(rich ~ poly(totdist_percent,2, raw=T) + 
+                                 propexotic + 
+                                 (1|Year) + (1|UniqueID), 
+                               data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    wet.rich.poly.exot.interaction <- lmer(rich ~ poly(totdist_percent,2, raw=T) * propexotic + 
+                                             (1|Year) + (1|UniqueID), 
+                                           data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    
+    AIC(wet.rich.poly, wet.rich.exot.only, wet.rich.poly.exot, wet.rich.poly.exot.interaction)
+    anova(wet.rich.poly, wet.rich.exot.only, wet.rich.poly.exot, wet.rich.poly.exot.interaction)
+    summary(wet.rich.poly.exot)
+    anova(wet.rich.poly.exot, type=2)
+    piecewiseSEM::rsquared(wet.rich.poly)
+    
+    anova(wet.rich.poly, wet.rich.poly.exot)
+    
+    piecewiseSEM::rsquared(wet.rich.poly.exot) # best model - new result
+    
+  }
 }
 
 # 4. does including % exotics improve fit of CSI model (from 2 above) ####
 {
-  csi.poly # previous best
-  # refit previous best w/ updated df
-  csi.polya <- lmer(CSI ~ poly(totdist_percent,2) + 
-                       Protocol + 
-                       # Latitude + Longitude +
-                       (1|Year) + (1|UniqueID), 
-                     data=veg_exot,
-                     REML=F)
-  csi.exot.only <- lmer(CSI ~ propexotic +
-                          Protocol +
-                          # Latitude + Longitude +
-                          (1|Year) + (1|UniqueID), 
-                        data=veg_exot,
-                        REML=F)
-  csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + 
-                          propexotic + 
-                          Protocol + 
-                          # Latitude + Longitude +
-                          (1|Year) + (1|UniqueID), 
-                        data=veg_exot,
-                        REML=F)
-  csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + 
-                                      Protocol + 
-                                      # Latitude + Longitude +
-                                      (1|Year) + (1|UniqueID), 
-                                    data=veg_exot,
-                                    REML=F)
+  # Terrestrial Protocol
+  {
+    ter.csi.poly # previous best
+    
+    ter.csi.exot.only <- lmer(CSI ~ propexotic +
+                            # Latitude + Longitude +
+                            (1|Year) + (1|UniqueID), 
+                          data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    ter.csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + 
+                            propexotic + 
+                            # Latitude + Longitude +
+                            (1|Year) + (1|UniqueID), 
+                            data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    ter.csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + 
+                                        # Latitude + Longitude +
+                                        (1|Year) + (1|UniqueID), 
+                                        data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+    
+    
+    AIC(ter.csi.poly, ter.csi.exot.only, ter.csi.poly.exot, ter.csi.poly.exot.interaction)
+    anova(ter.csi.poly, ter.csi.exot.only, ter.csi.poly.exot, ter.csi.poly.exot.interaction)
+    summary(ter.csi.poly.exot.interaction)
+    
+    piecewiseSEM::rsquared(ter.csi.poly)
+    
+    piecewiseSEM::rsquared(ter.csi.poly.exot.interaction) # best model
+    anova(ter.csi.poly.exot.interaction, type="2")  
+  }
   
-  AIC(csi.polya, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
-  anova(csi.polya, csi.exot.only, csi.poly.exot, csi.poly.exot.interaction)
-  summary(csi.poly.exot.interaction)
-  
-  piecewiseSEM::rsquared(csi.poly1a)
-  
-  piecewiseSEM::rsquared(csi.poly.exot.interaction) # best model
-  anova(csi.poly.exot.interaction, type="chisq")  
+  # Wetland Protocol
+  {
+    wet.csi.poly # previous best
+    
+    wet.csi.exot.only <- lmer(CSI ~ propexotic +
+                                # Latitude + Longitude +
+                                (1|Year) + (1|UniqueID), 
+                              data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    wet.csi.poly.exot <- lmer(CSI ~ poly(totdist_percent,2) + 
+                                propexotic + 
+                                # Latitude + Longitude +
+                                (1|Year) + (1|UniqueID), 
+                              data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    wet.csi.poly.exot.interaction <- lmer(CSI ~ poly(totdist_percent,2) * propexotic + 
+                                            # Latitude + Longitude +
+                                            (1|Year) + (1|UniqueID), 
+                                          data=filter(veg_df, Protocol=="Wetland"), REML=F)
+    
+    
+    AIC(wet.csi.poly, wet.csi.exot.only, wet.csi.poly.exot, wet.csi.poly.exot.interaction)
+    anova(wet.csi.poly, wet.csi.exot.only, wet.csi.poly.exot, wet.csi.poly.exot.interaction)
+    summary(wet.csi.poly.exot.interaction)
+    
+    piecewiseSEM::rsquared(wet.csi.poly)
+    
+    piecewiseSEM::rsquared(wet.csi.poly.exot.interaction) # best model
+    anova(wet.csi.poly.exot.interaction, type="2")  
+  }
   
 }
 
 # 0. test for spatial autocorrelation - Moran's I ####
 {
   
-  # save residuals from best models
+  # save residuals from best models - terrestrial protocol
   {
+    ter.rich.poly.resid <- data.frame( Site = filter(veg_df, Protocol=="Terrestrial")$Site,
+                                  Year = filter(veg_df, Protocol=="Terrestrial")$Year,
+                                  Lat = filter(veg_df, Protocol=="Terrestrial")$Latitude,
+                                  Long = filter(veg_df, Protocol=="Terrestrial")$Longitude,
+                                  UniqueID = filter(veg_df, Protocol=="Terrestrial")$UniqueID,
+                                  Residuals=residuals(ter.rich.poly) )
+    ter.csi.poly.resid <- data.frame(Site = filter(veg_df, Protocol=="Terrestrial")$Site,
+                                 Year = filter(veg_df, Protocol=="Terrestrial")$Year,
+                                 Lat = filter(veg_df, Protocol=="Terrestrial")$Latitude,
+                                 Long = filter(veg_df, Protocol=="Terrestrial")$Longitude,
+                                 UniqueID = filter(veg_df, Protocol=="Terrestrial")$UniqueID,
+                                 Residuals=residuals(ter.csi.poly) )
     
-    
-    rich.poly.resid <- data.frame(Protocol = spR$Protocol,
-                                  Site = spR$Site,
-                                  Year = spR$Year,
-                                  Lat = spR$Latitude,
-                                  Long = spR$Longitude,
-                                  UniqueID = spR$UniqueID,
-                                  Residuals=residuals(rich.poly) )
-    csi.poly.resid <- data.frame(Protocol = spR$Protocol,
-                                 Site = spR$Site,
-                                 Year = spR$Year,
-                                 Lat = spR$Latitude,
-                                 Long = spR$Longitude,
-                                 UniqueID = spR$UniqueID,
-                                 Residuals=residuals(csi.poly) )
-    rich.poly.exot.interaction.resid <- data.frame(Protocol = spR$Protocol,
-                                                   Site = spR$Site,
-                                                   Year = spR$Year,
-                                                   Lat = spR$Latitude,
-                                                   Long = spR$Longitude,
-                                                   UniqueID = spR$UniqueID,
-                                                   Residuals=residuals(rich.poly.exot.interaction) )
-    csi.poly.exot.interaction.resid <- data.frame(Protocol = spR$Protocol,
-                                                  Site = spR$Site,
-                                                  Year = spR$Year,
-                                                  Lat = spR$Latitude,
-                                                  Long = spR$Longitude,
-                                                  UniqueID = spR$UniqueID,
-                                                  Residuals=residuals(csi.poly.exot.interaction) )
-    save(rich.poly.resid, csi.poly.resid, rich.poly.exot.interaction.resid, csi.poly.exot.interaction.resid,
-         file="results/Model residuals.Rdata")
+    ter.rich.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df, Protocol=="Terrestrial")$Site,
+                                                   Year = filter(veg_df, Protocol=="Terrestrial")$Year,
+                                                   Lat = filter(veg_df, Protocol=="Terrestrial")$Latitude,
+                                                   Long = filter(veg_df, Protocol=="Terrestrial")$Longitude,
+                                                   UniqueID = filter(veg_df, Protocol=="Terrestrial")$UniqueID,
+                                                   Residuals=residuals(ter.rich.poly.exot.interaction) )
+    ter.csi.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df, Protocol=="Terrestrial")$Site,
+                                                  Year = filter(veg_df, Protocol=="Terrestrial")$Year,
+                                                  Lat = filter(veg_df, Protocol=="Terrestrial")$Latitude,
+                                                  Long = filter(veg_df, Protocol=="Terrestrial")$Longitude,
+                                                  UniqueID = filter(veg_df, Protocol=="Terrestrial")$UniqueID,
+                                                  Residuals=residuals(ter.csi.poly.exot.interaction) )
+    save(ter.rich.poly.resid, ter.csi.poly.resid, ter.rich.poly.exot.interaction.resid, ter.csi.poly.exot.interaction.resid,
+         file="results/Model residuals - 02092021.Rdata")
     
     
   }
   
   # richness w/ ape::Moran.I
   {
+    head(veg_df)
     
-    head(spR)
-    # create inverse distance matrix
-    rich.d <- as.matrix(dist(cbind(spR$Longitude, spR$Latitude)))
-    rich.d.inv <- 1/rich.d
-    diag(rich.d.inv) <- 0
-    rich.d.inv[1:5, 1:5] # inf values have same coords
-    rich.d.inv[is.infinite(rich.d.inv)] <- 0
+    # terrestrial
+    {
+      # create inverse distance matrix
+      ter.rich.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Terrestrial")$Longitude, 
+                                         filter(veg_df, Protocol=="Terrestrial")$Latitude)))
+      ter.rich.d.inv <- 1/ter.rich.d
+      diag(ter.rich.d.inv) <- 0
+      ter.rich.d.inv[1:5, 1:5] # inf values have same coords
+      ter.rich.d.inv[is.infinite(ter.rich.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df, Protocol=="Terrestrial")$rich, 
+              ter.rich.d.inv) # yes spatial autocorr
+    }
     
-    Moran.I(spR$rich, rich.d.inv) # yes spatial autocorr
+    # Wetland
+    {
+      # create inverse distance matrix
+      wet.rich.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Wetland")$Longitude, 
+                                         filter(veg_df, Protocol=="Wetland")$Latitude)))
+      wet.rich.d.inv <- 1/wet.rich.d
+      diag(wet.rich.d.inv) <- 0
+      wet.rich.d.inv[1:5, 1:5] # inf values have same coords
+      wet.rich.d.inv[is.infinite(wet.rich.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df, Protocol=="Wetland")$rich, 
+              wet.rich.d.inv) # yes spatial autocorr
+    }
+
   }
   
   # CSI
   {
-    head(veg_CSI_HF)
-    csi.d <- as.matrix(dist(cbind(veg_CSI_HF$Longitude, veg_CSI_HF$Latitude)))
-    csi.d.inv <- 1/csi.d
-    diag(csi.d.inv) <- 0
-    csi.d.inv[1:5, 1:5] # inf values have same coords
-    csi.d.inv[is.infinite(csi.d.inv)] <- 0
-    
-    Moran.I(veg_CSI_HF$CSI, csi.d.inv) # yes spatial autocorr
+    # terrestrial
+    {
+      ter.csi.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Terrestrial")$Longitude, 
+                                    filter(veg_df, Protocol=="Terrestrial")$Latitude)))
+      ter.csi.d.inv <- 1/ter.csi.d
+      diag(ter.csi.d.inv) <- 0
+      ter.csi.d.inv[1:5, 1:5] # inf values have same coords
+      ter.csi.d.inv[is.infinite(ter.csi.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df, Protocol=="Terrestrial")$CSI, ter.csi.d.inv) # yes spatial autocorr
+    }
+    # wetland
+    {
+      wet.csi.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Wetland")$Longitude, 
+                                        filter(veg_df, Protocol=="Wetland")$Latitude)))
+      wet.csi.d.inv <- 1/wet.csi.d
+      diag(wet.csi.d.inv) <- 0
+      wet.csi.d.inv[1:5, 1:5] # inf values have same coords
+      wet.csi.d.inv[is.infinite(wet.csi.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df, Protocol=="Wetland")$CSI, wet.csi.d.inv) # yes spatial autocorr
+    }
     
   }
   
+  Moran.I(residuals(ter.rich.poly), ter.rich.d.inv) # observed I = 0.0009
+  Moran.I(residuals(ter.csi.poly), ter.csi.d.inv) # I = 0.018
+  Moran.I(residuals(ter.rich.poly.exot.interaction), ter.rich.d.inv) # I=0.011
+  Moran.I(residuals(ter.csi.poly.exot.interaction), ter.csi.d.inv) # I=0.018 
   
-  Moran.I(residuals(rich.poly), rich.d.inv) # I = 0.011
-  Moran.I(residuals(csi.poly), csi.d.inv) # I = 0.012
-  
-  Moran.I(residuals(rich.poly.exot.interaction), rich.d.inv) # I=0.003
-  Moran.I(residuals(csi.poly.exot.interaction), csi.d.inv) # I=0.006 
-  
+  Moran.I(residuals(wet.rich.poly), wet.rich.d.inv) # observed I = 0.026
+  Moran.I(residuals(wet.csi.poly), wet.csi.d.inv) # I = 0.019
+  Moran.I(residuals(wet.rich.poly.exot.interaction), wet.rich.d.inv) # I=0.018
+  Moran.I(residuals(wet.csi.poly.exot.interaction), wet.csi.d.inv) # I=0.0185
 }
 
 # 5. permanovas of multivariate NMDS's ####
