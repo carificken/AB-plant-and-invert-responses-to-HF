@@ -1020,7 +1020,7 @@ hf_alb_wetlands <- hf_alb_wetlands %>% rowwise() %>%
   select(NRNAME, NSRNAME, Protocol, WetlandType, Site, Year, HFCategory, FEATURE_TY, Area_percent) 
 }
 
-#### make veg and HF data sets compatible; add in sites with 0 hf from veg df ####
+# make veg and HF data sets compatible; add in sites with 0 hf from veg df ####
 {
   vegsites <- select(veg_pa, -Species, -PA) %>% distinct()
   hfsites <- select(hf_alb_wetlands, -FEATURE_TY, -Area_percent, -HFCategory, -NSRNAME) %>% distinct()
@@ -1139,4 +1139,133 @@ hf <- left_join(hf,
 # write.csv(x = hf,
 #           file="data/cleaned/Alb wetlands HF_latlong.csv",
 #           row.names = F)
+}
+
+# combine all files into final dfs ####
+{
+  # df with richness, CSI, and prop exotic species 
+  { 
+    # plant data ####
+    veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
+    
+    # load HF data ####
+    hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
+    # calculate total disturbance ####
+    hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
+    
+    # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
+    {
+      sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
+      colnames(sp_SSI) <- c("Species", "CV")
+      
+      # 39 species have poor correlation among randomization runs
+      outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
+      sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
+      # sp_SSI <- sp_SSI_no_outliers
+    }
+    
+    # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
+    {
+      veg_CSI_HF <- left_join(veg_pa, sp_SSI)
+      veg_CSI_HF <- veg_CSI_HF %>% 
+        group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
+        summarize(CSI=mean(CV, na.rm = T)) # 211 sites have na value for at least 1 sp
+      
+      veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
+      veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
+      
+    }
+    
+    # make sp richness df
+    {
+      spR <- veg_pa %>% 
+        filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
+        group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
+        summarize(rich=sum(PA))
+      spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
+      spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
+      
+    }
+    
+    # exotic species
+    {
+      exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
+      veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
+      veg_exot <- veg_exot %>% 
+        filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
+        group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
+        tally() %>% 
+        spread(key=ORIGIN, value=n) %>% 
+        replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
+        rowwise() %>% 
+        mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
+               propexotic=100*(Exotic/rich))
+      
+      veg_exot <- left_join(veg_CSI_HF, 
+                            veg_exot, 
+                            by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
+        select(-Exotic, -Native, -`Unknown/Undetermined`)
+    }
+    
+    veg_df <- left_join(spR, veg_CSI_HF,
+              by=c("Protocol", "NRNAME", "Latitude", "Longitude", "WetlandType", "Site", "Year", "UniqueID", "totdist_percent"))
+    veg_df <- left_join(veg_df, veg_exot,
+              by=c("Protocol", "NRNAME", "Latitude", "Longitude", "WetlandType", "Site", "Year", "UniqueID", "totdist_percent", "rich", "CSI"))
+    # write.csv(veg_df,
+    #           file="data/cleaned/veg_rich_CSI_exot.csv", row.names = F)  
+  }
+  
+  # prep df for NMDS with HD levels based on hd %; calculate distance measures ####
+  {
+    # expand site x sp matrix 
+    veg_hfa <- veg_pa %>% 
+      filter(Species %in% sp_SSI$Species) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+    veg_hfa <- veg_hfa %>% 
+      spread(key=Species, value=PA) %>% 
+      gather(key=Species, value=PA, 8:ncol(.)) %>% 
+      replace_na(list(PA=0)) %>% 
+      spread(key=Species, value=PA) 
+    
+    # add tot disturbance to df
+    veg_hfa <- left_join(veg_hfa, 
+                         hf_tot,  
+                         by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+    
+    # veg_hf_2groups has most & least dist communities
+    veg_hf_2groups <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90) %>% 
+      mutate(HFbin = ifelse(totdist_percent==0, "Low", "High")) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
+      select(-totdist_percent)
+    # veg_hf_2groups %>% group_by(HFbin) %>% tally()
+    
+    sptokeep2 <- colSums(veg_hf_2groups[,9:ncol(veg_hf_2groups)]) %>% data.frame() 
+    sptokeep2$Species <- rownames(sptokeep2)
+    colnames(sptokeep2) <- c("Obs", "Species")
+    sptokeep2 <-  filter(sptokeep2, Obs > 1)
+    veg_hf_2groups <- veg_hf_2groups %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep2$Species) %>% 
+      spread(Species, PA)
+    
+    # veg_hf_3groups has most, least, and intermed dist communities
+    veg_hf_3groups <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
+      mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
+      select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
+      select(-totdist_percent)
+    
+    # veg_hf_3groups %>% group_by(HFbin) %>% tally()
+    
+    sptokeep3 <- colSums(veg_hf_3groups[,9:ncol(veg_hf_3groups)]) %>% data.frame() 
+    sptokeep3$Species <- rownames(sptokeep3)
+    colnames(sptokeep3) <- c("Obs", "Species")
+    sptokeep3 <-  filter(sptokeep3, Obs > 1)
+    veg_hf_3groups <- veg_hf_3groups %>% 
+      gather(Species, PA, 9:ncol(.)) %>% 
+      filter(Species %in% sptokeep3$Species) %>% 
+      spread(Species, PA)
+    
+    veg_distance_2groups <- vegdist(veg_hf_2groups[,9:ncol(veg_hf_2groups)], method="jaccard", binary=T)
+    veg_distance_3groups <- vegdist(veg_hf_3groups[,9:ncol(veg_hf_3groups)], method="jaccard", binary=T)
+  }
 }
