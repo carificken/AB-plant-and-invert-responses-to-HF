@@ -152,7 +152,7 @@ rm(list=ls())
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    scale_linetype_manual(values=c("dashed", "dotted")) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
   
@@ -195,7 +195,7 @@ rm(list=ls())
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
     geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    scale_linetype_manual(values=c("dashed", "dotted")) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
   
@@ -256,7 +256,7 @@ rm(list=ls())
     geom_smooth(data=veg_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, size=0.5, color=1) +
     
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    scale_linetype_manual(values=c("dashed", "dotted")) +
     labs(x="Total Development (%)", y="Nonnative Sp. (%)") +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
