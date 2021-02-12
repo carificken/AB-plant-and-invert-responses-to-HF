@@ -13,22 +13,33 @@ rm(list=ls())
   veg_df <- read.csv("data/cleaned/veg_rich_CSI_exot.csv")
 }
 
-
-
 # select only 1 sampling event for each site
-
+{
+  # median sampling year
+  median(veg_df$Year) # 2013
+  # select sampling event closest to 2013 for each site
+  
+  veg_df <- veg_df %>% 
+    mutate(Years_from_med = abs(Year-2013)) %>% # create column w/ num of yrs from 2013
+    group_by(Protocol, Site) %>% 
+    slice_min(order_by=Years_from_med, with_ties=F) %>% # select the lowest Years_from_med value for each group
+    select(-Years_from_med) # remove this variable
+  # note: there were still a few sites that were classified as diff wetland types depending on yr; this has removed them
+}
 
 # comparing true vs observed sp richness ####
 {
-  sites <- veg_pa %>% 
-    mutate(UniqueID=paste(Site, Year, sep="_")) %>% 
-    select(Protocol, UniqueID)
-  sites_ter <- sites %>% filter(Protocol=="Terrestrial")
-  sites_wet <- sites %>% filter(Protocol=="Wetland")
+  # make separarte dfs of terrestrial and wetland sites; create new UniqueID with Site_Year
+  sites_ter <- veg_df %>% filter(Protocol=="Terrestrial") %>% 
+    select(Site, Year) %>% 
+    mutate(UniqueID = paste(Site, Year, sep="_"))
+  sites_wet <- veg_df %>% filter(Protocol=="Wetland")%>% 
+    select(Site, Year) %>% 
+    mutate(UniqueID = paste(Site, Year, sep="_"))
   
   # terrestrial protocol sites
   {
-    #load and prep data
+    #load and prep data on raw veg presence-absence per plot within sites
     {
       ter_vascplant_pa <- read.csv("/Users/carif/Dropbox/Desktop/Waterloo/ABMI data/Terrestrial data/A_T15_Vascular_Plants.csv", 
                                    row.names = NULL, 
@@ -54,13 +65,15 @@ rm(list=ls())
         mutate(PA=1) %>% 
         group_by(UniqueID, Quadrant) %>% 
         distinct() %>%  # this is my brute force fix for the errors with unmatching "Year" vs "Field Date"
-        spread(., key=Species, value=PA) %>%  # spread out into site x sp matrix
+        spread(., key=Species, value=PA) %>% # spread out into site x sp matrix
         gather(., key=Species, value=PA, 3:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
         replace_na(., list(PA=0)) %>% 
         spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
       
       # keep only sites we used in full analyses
-      ter_vascplant_pa <- ter_vascplant_pa %>% filter(UniqueID %in% sites_ter$UniqueID)
+      sites_ter %>% head()
+      ter_vascplant_pa <- ter_vascplant_pa %>% 
+        filter(UniqueID %in% sites_ter$UniqueID) 
       
     }
     
@@ -148,14 +161,16 @@ rm(list=ls())
       wet_vascplant_pa <- wet_vascplant_pa %>% 
         mutate(PA=1) %>% 
         group_by(UniqueID, Transect) %>% 
-        spread(., key=Species, value=PA) %>% # spread out into site x sp matrix
+        spread(., key=Species, value=PA) %>%  # spread out into site x sp matrix
         gather(., key=Species, value=PA, 5:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
         replace_na(., list(PA=0)) %>% 
         spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
       
       # keep only sites we used in full analyses
-      wet_vascplant_pa <- wet_vascplant_pa %>% filter(UniqueID %in% sites_wet$UniqueID)
-      
+      head(sites_wet)
+      wet_vascplant_pa <- wet_vascplant_pa %>% 
+        filter(UniqueID %in% sites_wet$UniqueID) 
+
     }
 
     # estimates of true diversity
@@ -240,7 +255,7 @@ rm(list=ls())
 # how many sites and species ####
 {
   veg_df %>% distinct(Protocol, Site) %>% nrow() # 1582 unique wetlands (some sampled >1x)
-  veg_df %>% group_by(Protocol, Site) %>% 
+  veg_df %>% group_by(Protocol, WetlandType, Site) %>% 
     tally() %>% 
     filter(n>1) %>% 
     arrange(desc(n)) %>% 
@@ -280,6 +295,57 @@ rm(list=ls())
   wilcox.test(x=tmp$Early, y=tmp$Late, paired=T, alternative = "less")
 }
 
+# checking assumptions of normality
+{
+  ###### TESTING #######
+  # This changes the "UniqueID" in veg_df (from Protocol_Site to Site_Year) and converts the "rich" variable from observed richness to chao-estimated true richness
+  {
+    # replace observed richness with chao-estimated true richness
+    # first add protocol ID var to dfs
+    div.out$Protocol <- "Wetland"
+    div.out.ter$Protocol <- "Terrestrial"
+    
+    truerich <- bind_rows(div.out, div.out.ter) 
+    # note that the "UniqueID" vars aren't the same
+    head(truerich) # UniqueID = Site_Year
+    head(veg_df) # UniqueID = Protocol_Site
+    
+    veg_df <- veg_df %>% mutate(UniqueID = paste(Site, Year, sep="_")) # replace with Site_Year UniqueID
+    
+    veg_df <- left_join(veg_df, 
+                        select(truerich, chao, UniqueID, Protocol), 
+                        by=c("Protocol", "UniqueID")) 
+    head(veg_df)
+    
+    # doing this just so i dont have to change the text in all the models... may delete later
+    veg_df <- veg_df %>% 
+      mutate(rich = chao) %>% 
+      select(-chao)
+  }
+
+  mod <- lm(rich ~ totdist_percent, data=filter(veg_df, Protocol=="Terrestrial"))
+  
+  # residuals are normally distributed? good
+  hist(resid(mod)) 
+  plot(mod, 2)
+  
+  # linear relationships - so so, but we use poly? transform?
+  plot(mod, 1) 
+  
+  # equal variance of residuals (homoscedasticity)
+  plot(mod,3) # pretty ok? so so?
+  plot(lm(log(rich) ~ totdist_percent, data=filter(veg_df, Protocol=="Terrestrial")), 3) # doesn't really help
+  ter.rich.linear <- lmer(rich ~ totdist_percent + 
+                            (1|Year) + (1|UniqueID), 
+                          data=filter(veg_df, Protocol=="Terrestrial"), REML=F)
+  lmtest::bptest(mod) # Breusch-Pagan test
+  car::ncvTest(mod)  # Breusch-Pagan test
+  # these are significant but we don't end up using the linear fixed effects model?
+  
+  
+  # extreme cases
+  plot(mod,5) # 479?
+}
 
 # 1a. how does sp richness vary across HF gradient ####
 {
@@ -623,7 +689,40 @@ rm(list=ls())
                                                   UniqueID = filter(veg_df, Protocol=="Terrestrial")$UniqueID,
                                                   Residuals=residuals(ter.csi.poly.exot.interaction) )
     save(ter.rich.poly.resid, ter.csi.poly.resid, ter.rich.poly.exot.interaction.resid, ter.csi.poly.exot.interaction.resid,
-         file="results/Model residuals - 02092021.Rdata")
+         file="results/Model residuals - terrestrial protocol - 02092021.Rdata")
+    
+    
+  }
+  
+  # save residuals from best models - Wetland protocol
+  {
+    wet.rich.poly.resid <- data.frame( Site = filter(veg_df, Protocol=="Wetland")$Site,
+                                       Year = filter(veg_df, Protocol=="Wetland")$Year,
+                                       Lat = filter(veg_df, Protocol=="Wetland")$Latitude,
+                                       Long = filter(veg_df, Protocol=="Wetland")$Longitude,
+                                       UniqueID = filter(veg_df, Protocol=="Wetland")$UniqueID,
+                                       Residuals=residuals(wet.rich.poly) )
+    wet.csi.poly.resid <- data.frame(Site = filter(veg_df, Protocol=="Wetland")$Site,
+                                     Year = filter(veg_df, Protocol=="Wetland")$Year,
+                                     Lat = filter(veg_df, Protocol=="Wetland")$Latitude,
+                                     Long = filter(veg_df, Protocol=="Wetland")$Longitude,
+                                     UniqueID = filter(veg_df, Protocol=="Wetland")$UniqueID,
+                                     Residuals=residuals(wet.csi.poly) )
+    
+    wet.rich.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df, Protocol=="Wetland")$Site,
+                                                       Year = filter(veg_df, Protocol=="Wetland")$Year,
+                                                       Lat = filter(veg_df, Protocol=="Wetland")$Latitude,
+                                                       Long = filter(veg_df, Protocol=="Wetland")$Longitude,
+                                                       UniqueID = filter(veg_df, Protocol=="Wetland")$UniqueID,
+                                                       Residuals=residuals(wet.rich.poly.exot.interaction) )
+    wet.csi.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df, Protocol=="Wetland")$Site,
+                                                      Year = filter(veg_df, Protocol=="Wetland")$Year,
+                                                      Lat = filter(veg_df, Protocol=="Wetland")$Latitude,
+                                                      Long = filter(veg_df, Protocol=="Wetland")$Longitude,
+                                                      UniqueID = filter(veg_df, Protocol=="Wetland")$UniqueID,
+                                                      Residuals=residuals(wet.csi.poly.exot.interaction) )
+    save(wet.rich.poly.resid, wet.csi.poly.resid, wet.rich.poly.exot.interaction.resid, wet.csi.poly.exot.interaction.resid,
+         file="results/Model residuals - wetland protocol - 02092021.Rdata")
     
     
   }
