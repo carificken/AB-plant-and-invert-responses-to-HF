@@ -1154,12 +1154,18 @@ hf <- left_join(hf,
       median(veg_pa$Year) # 2013
       # select sampling event closest to 2013 for each site
       
-      veg_pa <- veg_pa %>% 
+      sitestokeep <- veg_pa %>% 
         mutate(Years_from_med = abs(Year-2013)) %>% # create column w/ num of yrs from 2013
         group_by(Protocol, Site) %>% 
         slice_min(order_by=Years_from_med, with_ties=F) %>% # select the lowest Years_from_med value for each group
-        select(-Years_from_med) # remove this variable
+        select(Protocol, Site, Year) # 
       # note: there were still a few sites that were classified as diff wetland types depending on yr; this has removed them
+      sitestokeep$uniquesite <- paste(sitestokeep$Protocol, sitestokeep$Site, sitestokeep$Year, sep="_")
+      
+      veg_pa$tmpuniqueid <- paste(veg_pa$Protocol, veg_pa$Site, veg_pa$Year, sep="_")
+      veg_pa <- veg_pa %>% 
+        filter(tmpuniqueid %in% sitestokeep$uniquesite) %>% 
+        select(-tmpuniqueid) 
       
       # check 
       veg_pa %>% 
@@ -1169,9 +1175,202 @@ hf <- left_join(hf,
         arrange(desc(n))
       
       # export for Martin's updated SSI calculates
-      write.csv(veg_pa,
-                file="data/cleaned/ABMI veg cleaned latlong - 1 sample per site.csv",
-                row.names = F)
+      # write.csv(veg_pa,
+      #           file="data/cleaned/ABMI veg cleaned latlong - 1 sample per site.csv",
+      #           row.names = F)
+    }
+    
+    # calculate chao estimated richness####
+    {
+      # make separate dfs of terrestrial and wetland sites; create new UniqueID with Site_Year
+      sites_ter <- veg_pa %>% filter(Protocol=="Terrestrial") %>% 
+        select(Site, Year) %>% 
+        mutate(UniqueID = paste(Site, Year, sep="_"))
+      sites_wet <- veg_pa %>% filter(Protocol=="Wetland")%>% 
+        select(Site, Year) %>% 
+        mutate(UniqueID = paste(Site, Year, sep="_"))
+      
+      # terrestrial protocol sites
+      {
+        #load and prep data on raw veg presence-absence per plot within sites
+        {
+          ter_vascplant_pa <- read.csv("/Users/carif/Dropbox/Desktop/Waterloo/ABMI data/Terrestrial data/A_T15_Vascular_Plants.csv", 
+                                       row.names = NULL, 
+                                       na.strings = c("NONE", "VNA", "SNI", "DNC", "SNR"))
+          names(ter_vascplant_pa) <- colnames(ter_vascplant_pa[,2:ncol(ter_vascplant_pa)])
+          ter_vascplant_pa <- ter_vascplant_pa[2:ncol(ter_vascplant_pa)-1]
+          ter_vascplant_pa <- ter_vascplant_pa %>% 
+            select(Site=ABMI.Site, Year, Quadrant, Species = Scientific.Name) %>% 
+            mutate(UniqueID = paste(Site, Year, sep="_")) %>% # create new unique ID
+            select(-Site, -Year) %>% # remove columns captured in UniqueID
+            select(UniqueID, everything()) %>% # rearrange for clarity
+            filter(!is.na(Species)) # exclude missing species
+          
+          # ter_vascplant_pa %>%  # was "Year" mislabeled in some sites?
+          #   filter(ABMI.Site=="693" & Year == "2013" & Quadrant=="NE" & Scientific.Name=="Abies balsamea")
+          # 
+          # ter_vascplant_pa %>% 
+          #   filter(Field.Date=="10-Jul-17") %>% # sites with this field date were marked as sampled in as 2013 or 2017; which is wrong??
+          #   distinct(ABMI.Site, Year)
+          # # let's just move forward assuming "Year" is correct. There is a mistake somewhere but Im opting to move forward with brute force   
+          
+          ter_vascplant_pa <- ter_vascplant_pa %>% 
+            mutate(PA=1) %>% 
+            group_by(UniqueID, Quadrant) %>% 
+            distinct() %>%  # this is my brute force fix for the errors with unmatching "Year" vs "Field Date"
+            spread(., key=Species, value=PA) %>% # spread out into site x sp matrix
+            gather(., key=Species, value=PA, 3:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
+            replace_na(., list(PA=0)) %>% 
+            spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
+          
+          # UGHHH remove -ABMI- etc from interior of sites names
+          ter_vascplant_pa <- ter_vascplant_pa %>% 
+            mutate(UniqueID = str_replace(UniqueID, "-DH-", "-"),
+                   UniqueID = str_replace(UniqueID, "-ABMI-", "-"),
+                   UniqueID = str_replace(UniqueID, "-ALPAC-", "-"),
+                   UniqueID = str_replace(UniqueID, "-SRD-", "-"))
+          
+          # keep only sites we used in full analyses
+          sites_ter %>% head() # this is the list of sites
+          ter_vascplant_pa <- ter_vascplant_pa %>% 
+            filter(UniqueID %in% sites_ter$UniqueID)
+          
+        }
+        
+        # estimate true diversity
+        div.out.ter <- vegan::specpool(ter_vascplant_pa[3:ncol(ter_vascplant_pa)],pool=ter_vascplant_pa$UniqueID)
+        div.out.ter$UniqueID <- rownames(div.out.ter)
+        }
+      
+      # wetland protocol sites
+      {
+        # load and prep data
+        {
+          wet_vascplant_pa <- read.csv("/Users/carif/Dropbox/Desktop/Waterloo/ABMI data/Wetland data/A_W05_Vascular_Plants.csv", 
+                                       row.names = NULL, 
+                                       na.strings = c("NONE", "VNA", "SNI", "DNC", "SNR")) %>% 
+            select(Site=ABMI.Site, Year, Old.Zone, New.Zone, Transect, Species = Scientific.Name) %>% 
+            mutate(UniqueID = paste(Site, Year, sep="_")) %>% # create new unique ID
+            select(-Site, -Year) %>% # remove columns captured in UniqueID
+            select(UniqueID, everything()) # rearrange for clarity
+          
+          wet_vascplant_pa <- wet_vascplant_pa %>% filter(!is.na(Species)) # exclude sp with missing IDs
+          # what are replicates? transects? each transect crosses multiple zones; replicate sp recorded in diff zones
+          wet_vascplant_pa %>% 
+            distinct(UniqueID, Transect) %>% 
+            group_by(UniqueID) %>% 
+            tally() #  num of transects per site/year
+          wet_vascplant_pa <- wet_vascplant_pa %>% 
+            mutate(PA=1) %>% 
+            group_by(UniqueID, Transect) %>% 
+            spread(., key=Species, value=PA) %>%  # spread out into site x sp matrix
+            gather(., key=Species, value=PA, 5:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
+            replace_na(., list(PA=0)) %>% 
+            spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
+          
+          # UGHHH remove -ABMI- etc from interior of sites names
+          wet_vascplant_pa <- wet_vascplant_pa %>% 
+            mutate(UniqueID = str_replace(UniqueID, "-DH-", "-"),
+                   UniqueID = str_replace(UniqueID, "-ABMI-", "-"),
+                   UniqueID = str_replace(UniqueID, "-ALPAC-", "-"),
+                   UniqueID = str_replace(UniqueID, "-SRD-", "-")) 
+          
+          # keep only sites we used in full analyses
+          head(sites_wet) # these are the sites to keep
+          wet_vascplant_pa <- wet_vascplant_pa %>% 
+            filter(UniqueID %in% sites_wet$UniqueID) 
+          
+        }
+        
+        # estimates of true diversity
+        div.out <- vegan::specpool(wet_vascplant_pa[5:ncol(wet_vascplant_pa)],pool=wet_vascplant_pa$UniqueID)
+        div.out$UniqueID <- rownames(div.out)
+      }
+      
+      # create df of true richness for terrestrial and wetland protocols
+      div.out$Protocol <- "Wetland"
+      div.out.ter$Protocol <- "Terrestrial"
+      truerich <- bind_rows(div.out, div.out.ter) 
+      truerich$UniqueID <- paste(truerich$Protocol, truerich$UniqueID, sep="_")
+      
+    }
+    
+    # compare underestimation for wetland and terrestrial protocol sites
+    # this chunk has extra code to quantify and visualize the difference between true and measured richness
+    {
+      # terrestrial protocol
+      median(div.out.ter$Species)  # median observed richness
+      median(div.out.ter$chao-div.out.ter$chao.se) # median lower bound for true richness
+      
+      # compute the average % of underestimation
+      div.out.ter %>% 
+        ungroup() %>% 
+        summarize(percent_underestimated = 100*((chao - Species)/chao))  %>% 
+        summarize(mean_under = mean(percent_underestimated),
+                  se_under = sd(percent_underestimated)/sqrt(length(percent_underestimated)))
+      
+      # compute the average num of missing sp
+      div.out.ter %>% 
+        ungroup() %>% 
+        summarize(num_underestimated = chao - Species)  %>% 
+        summarize(mean_under = mean(num_underestimated),
+                  se_under = sd(num_underestimated)/sqrt(length(num_underestimated)))
+      
+      mean(div.out.ter$chao.se)
+      ter.chao <- ggplot(div.out.ter) +
+        geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="red", alpha=0.5) +
+        geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
+                           ymin=chao-chao.se,
+                           ymax=chao+chao.se), color="red", alpha=0.5) +
+        # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
+        geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
+                      y=Species, group=1)) +
+        labs(x="Terrestrial Protocol Sites", y="Species (Num.)") +
+        ggtitle("Extrapolated Richness (Chao)") +
+        theme(axis.text.x = element_blank()) +
+        lims(y=c(0,150))
+      
+      # wetland protocol
+      median(div.out$Species) # median observed richness
+      median(div.out$chao-div.out$chao.se) # median lower bound for true richness
+      
+      # compute the average % of underestimation
+      div.out %>% 
+        ungroup() %>% 
+        summarize(percent_underestimated = 100*((chao - Species)/chao))  %>% 
+        summarize(mean_under = mean(percent_underestimated),
+                  se_under = sd(percent_underestimated)/sqrt(length(percent_underestimated)))
+      
+      # compute the average num of missing sp
+      div.out %>% 
+        ungroup() %>% 
+        summarize(num_underestimated = chao - Species)  %>% 
+        summarize(mean_under = mean(num_underestimated),
+                  se_under = sd(num_underestimated)/sqrt(length(num_underestimated)))
+      
+      wet.chao <- ggplot(div.out) +
+        geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="red", alpha=0.5) +
+        geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
+                           ymin=chao-chao.se,
+                           ymax=chao+chao.se), color="red", alpha=0.5) +
+        # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
+        geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
+                      y=Species, group=1)) +
+        labs(x="Wetland Protocol Sites", y="Species (Num.)") +
+        ggtitle("Extrapolated Richness (Chao)") +
+        theme(axis.text.x = element_blank()) +
+        lims(y=c(0,100))
+      
+      
+      # compare underestimation for two protocols
+      tmp <- div.out.ter %>% 
+        ungroup() %>% 
+        summarize(percent_underestimated = 100*((chao - Species)/chao))
+      tmp2 <- div.out %>% 
+        ungroup() %>% 
+        summarize(percent_underestimated = 100*((chao - Species)/chao))
+      
+      t.test(tmp$percent_underestimated, tmp2$percent_underestimated)
     }
     
     # load HF data ####
@@ -1204,7 +1403,7 @@ hf <- left_join(hf,
     
     # make sp richness df
     {
-      spR <- veg_pa %>% 
+     spR <- veg_pa %>% 
         filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
         group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
         summarize(rich=sum(PA))
@@ -1237,8 +1436,24 @@ hf <- left_join(hf,
               by=c("Protocol", "NRNAME", "Latitude", "Longitude", "WetlandType", "Site", "Year", "UniqueID", "totdist_percent"))
     veg_df <- left_join(veg_df, veg_exot,
               by=c("Protocol", "NRNAME", "Latitude", "Longitude", "WetlandType", "Site", "Year", "UniqueID", "totdist_percent", "rich", "CSI"))
+    
+    # add estimated (i.e. true richness) to df
+    {
+      head(veg_df)
+      # rename "rich" column to "rich_observed"
+      colnames(veg_df)[8] <- "rich_observed"
+      
+      head(truerich)
+      veg_df$tmpUniqueID <- paste(veg_df$UniqueID, veg_df$Year, sep="_")
+      veg_df <- left_join(veg_df,
+                select(truerich, UniqueID, "rich_chao" = chao),
+                by=c("tmpUniqueID" = "UniqueID")) %>% 
+        select(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year, rich_chao, rich_observed, totdist_percent, CSI, propexotic)
+       
+    }
+    
     # write.csv(veg_df,
-    #           file="data/cleaned/veg_rich_CSI_exot.csv", row.names = F)  
+    #           file="data/cleaned/veg_rich_CSI_exot.csv", row.names = F)
   }
   
   # prep df for NMDS with HD levels based on hd %; calculate distance measures ####
