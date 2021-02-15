@@ -1148,6 +1148,32 @@ hf <- left_join(hf,
     # plant data ####
     veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
     
+    # select only 1 sampling event for each site
+    {
+      # median sampling year
+      median(veg_pa$Year) # 2013
+      # select sampling event closest to 2013 for each site
+      
+      veg_pa <- veg_pa %>% 
+        mutate(Years_from_med = abs(Year-2013)) %>% # create column w/ num of yrs from 2013
+        group_by(Protocol, Site) %>% 
+        slice_min(order_by=Years_from_med, with_ties=F) %>% # select the lowest Years_from_med value for each group
+        select(-Years_from_med) # remove this variable
+      # note: there were still a few sites that were classified as diff wetland types depending on yr; this has removed them
+      
+      # check 
+      veg_pa %>% 
+        distinct(Protocol, WetlandType, Site, Year) %>% 
+        group_by(Protocol, Site) %>% 
+        tally() %>% 
+        arrange(desc(n))
+      
+      # export for Martin's updated SSI calculates
+      write.csv(veg_pa,
+                file="data/cleaned/ABMI veg cleaned latlong - 1 sample per site.csv",
+                row.names = F)
+    }
+    
     # load HF data ####
     hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
     # calculate total disturbance ####
