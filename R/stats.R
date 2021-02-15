@@ -13,19 +13,7 @@ rm(list=ls())
   veg_df <- read.csv("data/cleaned/veg_rich_CSI_exot.csv")
 }
 
-# select only 1 sampling event for each site
-{
-  # median sampling year
-  median(veg_df$Year) # 2013
-  # select sampling event closest to 2013 for each site
-  
-  veg_df <- veg_df %>% 
-    mutate(Years_from_med = abs(Year-2013)) %>% # create column w/ num of yrs from 2013
-    group_by(Protocol, Site) %>% 
-    slice_min(order_by=Years_from_med, with_ties=F) %>% # select the lowest Years_from_med value for each group
-    select(-Years_from_med) # remove this variable
-  # note: there were still a few sites that were classified as diff wetland types depending on yr; this has removed them
-}
+
 
 # comparing true vs observed sp richness ####
 {
