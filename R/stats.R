@@ -1,4 +1,5 @@
 # This file runs the stats to analyze relationships between HD vs richness and niche specialization
+# we are updating the file to 
 
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
@@ -14,231 +15,6 @@ rm(list=ls())
 }
 
 
-
-# comparing true vs observed sp richness ####
-{
-  # make separarte dfs of terrestrial and wetland sites; create new UniqueID with Site_Year
-  sites_ter <- veg_df %>% filter(Protocol=="Terrestrial") %>% 
-    select(Site, Year) %>% 
-    mutate(UniqueID = paste(Site, Year, sep="_"))
-  sites_wet <- veg_df %>% filter(Protocol=="Wetland")%>% 
-    select(Site, Year) %>% 
-    mutate(UniqueID = paste(Site, Year, sep="_"))
-  
-  # terrestrial protocol sites
-  {
-    #load and prep data on raw veg presence-absence per plot within sites
-    {
-      ter_vascplant_pa <- read.csv("/Users/carif/Dropbox/Desktop/Waterloo/ABMI data/Terrestrial data/A_T15_Vascular_Plants.csv", 
-                                   row.names = NULL, 
-                                   na.strings = c("NONE", "VNA", "SNI", "DNC", "SNR"))
-      names(ter_vascplant_pa) <- colnames(ter_vascplant_pa[,2:ncol(ter_vascplant_pa)])
-      ter_vascplant_pa <- ter_vascplant_pa[2:ncol(ter_vascplant_pa)-1]
-      ter_vascplant_pa <- ter_vascplant_pa %>% 
-        select(Site=ABMI.Site, Year, Quadrant, Species = Scientific.Name) %>% 
-        mutate(UniqueID = paste(Site, Year, sep="_")) %>% # create new unique ID
-        select(-Site, -Year) %>% # remove columns captured in UniqueID
-        select(UniqueID, everything()) %>% # rearrange for clarity
-        filter(!is.na(Species)) # exclude missing species
-        
-      # ter_vascplant_pa %>%  # was "Year" mislabeled in some sites?
-      #   filter(ABMI.Site=="693" & Year == "2013" & Quadrant=="NE" & Scientific.Name=="Abies balsamea")
-      # 
-      # ter_vascplant_pa %>% 
-      #   filter(Field.Date=="10-Jul-17") %>% # sites with this field date were marked as sampled in as 2013 or 2017; which is wrong??
-      #   distinct(ABMI.Site, Year)
-      # # let's just move forward assuming "Year" is correct. There is a mistake somewhere but Im opting to move forward with brute force   
-      
-      ter_vascplant_pa <- ter_vascplant_pa %>% 
-        mutate(PA=1) %>% 
-        group_by(UniqueID, Quadrant) %>% 
-        distinct() %>%  # this is my brute force fix for the errors with unmatching "Year" vs "Field Date"
-        spread(., key=Species, value=PA) %>% # spread out into site x sp matrix
-        gather(., key=Species, value=PA, 3:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
-        replace_na(., list(PA=0)) %>% 
-        spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
-      
-      # keep only sites we used in full analyses
-      sites_ter %>% head()
-      ter_vascplant_pa <- ter_vascplant_pa %>% 
-        filter(UniqueID %in% sites_ter$UniqueID) 
-      
-    }
-    
-    # estimate true diversity
-    div.out.ter <- vegan::specpool(ter_vascplant_pa[3:ncol(ter_vascplant_pa)],pool=ter_vascplant_pa$UniqueID)
-    div.out.ter$UniqueID <- rownames(div.out.ter)
-    head(div.out.ter)
-    median(div.out.ter$Species)  # median observed richness
-    median(div.out.ter$chao-div.out.ter$chao.se) # median lower bound for true richness
-    
-    # compute the average % of underestimation
-    div.out.ter %>% 
-      ungroup() %>% 
-      summarize(percent_underestimated = 100*((chao - Species)/chao))  %>% 
-      summarize(mean_under = mean(percent_underestimated),
-                se_under = sd(percent_underestimated)/sqrt(length(percent_underestimated)))
-
-    # compute the average num of missing sp
-    div.out.ter %>% 
-      ungroup() %>% 
-      summarize(num_underestimated = chao - Species)  %>% 
-      summarize(mean_under = mean(num_underestimated),
-                se_under = sd(num_underestimated)/sqrt(length(num_underestimated)))
-    
-    
-    mean(div.out.ter$chao.se)
-    ter.chao <- ggplot(div.out.ter) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="red", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=chao-chao.se,
-                         ymax=chao+chao.se), color="red", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +
-      labs(x="Terrestrial Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Chao)") +
-      theme(axis.text.x = element_blank()) +
-      lims(y=c(0,150))
-    
-    ter.jack <- ggplot(div.out.ter) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=jack1 ), color="blue", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=jack1 -jack1.se,
-                         ymax=jack1 +jack1.se), color="blue", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +      labs(x="Terrestrial Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Jackknife)") +    
-      theme(axis.text.x = element_blank())  +
-      lims(y=c(0,150))
-    
-    
-    ter.boot <- ggplot(div.out.ter) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=boot), color="green", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=boot -boot.se,
-                         ymax=boot +boot.se), color="green", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +      labs(x="Terrestrial Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Bootstrapped)") +
-      theme(axis.text.x = element_blank()) +
-      lims(y=c(0,150))
-
-  
-  }
-  # wetland protocol sites
-  {
-    # load and prep data
-    {
-      wet_vascplant_pa <- read.csv("/Users/carif/Dropbox/Desktop/Waterloo/ABMI data/Wetland data/A_W05_Vascular_Plants.csv", 
-                                   row.names = NULL, 
-                                   na.strings = c("NONE", "VNA", "SNI", "DNC", "SNR")) %>% 
-        select(Site=ABMI.Site, Year, Old.Zone, New.Zone, Transect, Species = Scientific.Name) %>% 
-        mutate(UniqueID = paste(Site, Year, sep="_")) %>% # create new unique ID
-        select(-Site, -Year) %>% # remove columns captured in UniqueID
-        select(UniqueID, everything()) # rearrange for clarity
-      
-      wet_vascplant_pa <- wet_vascplant_pa %>% filter(!is.na(Species)) # exclude sp with missing IDs
-      # what are replicates? transects? each transect crosses multiple zones; replicate sp recorded in diff zones
-      wet_vascplant_pa %>% 
-        distinct(UniqueID, Transect) %>% 
-        group_by(UniqueID) %>% 
-        tally() #  num of transects per site/year
-      wet_vascplant_pa <- wet_vascplant_pa %>% 
-        mutate(PA=1) %>% 
-        group_by(UniqueID, Transect) %>% 
-        spread(., key=Species, value=PA) %>%  # spread out into site x sp matrix
-        gather(., key=Species, value=PA, 5:ncol(.)) %>% # regather to replace NAs with 0 (=absent)
-        replace_na(., list(PA=0)) %>% 
-        spread(., Species, PA) # now respread for site x sp matrix including both PA=1 and PA=0
-      
-      # keep only sites we used in full analyses
-      head(sites_wet)
-      wet_vascplant_pa <- wet_vascplant_pa %>% 
-        filter(UniqueID %in% sites_wet$UniqueID) 
-
-    }
-
-    # estimates of true diversity
-    div.out <- vegan::specpool(wet_vascplant_pa[5:ncol(wet_vascplant_pa)],pool=wet_vascplant_pa$UniqueID)
-    div.out$UniqueID <- rownames(div.out)
-    dim(div.out)
-    median(div.out$Species) # median observed richness
-    median(div.out$chao-div.out$chao.se) # median lower bound for true richness
-
-    # compute the average % of underestimation
-    div.out %>% 
-      ungroup() %>% 
-      summarize(percent_underestimated = 100*((chao - Species)/chao))  %>% 
-      summarize(mean_under = mean(percent_underestimated),
-                se_under = sd(percent_underestimated)/sqrt(length(percent_underestimated)))
-  
-    # compute the average num of missing sp
-    div.out %>% 
-      ungroup() %>% 
-      summarize(num_underestimated = chao - Species)  %>% 
-      summarize(mean_under = mean(num_underestimated),
-                se_under = sd(num_underestimated)/sqrt(length(num_underestimated)))
-    
-    
-    wet.chao <- ggplot(div.out) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="red", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=chao-chao.se,
-                         ymax=chao+chao.se), color="red", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +
-      labs(x="Wetland Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Chao)") +
-      theme(axis.text.x = element_blank()) +
-      lims(y=c(0,100))
-    
-    wet.jack <- ggplot(div.out) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=jack1 ), color="blue", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=jack1 -jack1.se,
-                         ymax=jack1 +jack1.se), color="blue", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +      labs(x="Wetland Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Jackknife)") +    
-      theme(axis.text.x = element_blank())+
-      lims(y=c(0,100))
-    
-    wet.boot <- ggplot(div.out) +
-      geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=boot), color="green", alpha=0.5) +
-      geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
-                         ymin=boot -boot.se,
-                         ymax=boot +boot.se), color="green", alpha=0.5) +
-      # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
-      geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
-                    y=Species, group=1)) +      labs(x="Wetland Protocol Sites", y="Species (Num.)") +
-      ggtitle("Extrapolated Richness (Bootstrapped)") +
-      theme(axis.text.x = element_blank())+
-      lims(y=c(0,100))
-  
-  }
-  
-  # plot all wetland + terrestrial protocol plots
-  plot_grid(ter.chao + theme(plot.title = element_blank()), wet.chao + theme(plot.title = element_blank()),
-            ter.jack + theme(plot.title = element_blank()), wet.jack + theme(plot.title = element_blank()),
-            ter.boot + theme(plot.title = element_blank()), wet.boot + theme(plot.title = element_blank()),
-            ncol=2, nrow=3)
-  
-  # compare underestimation for wetland and terrestrial protocol sites
-  tmp <- div.out.ter %>% 
-    ungroup() %>% 
-    summarize(percent_underestimated = 100*((chao - Species)/chao))
-  tmp2 <- div.out %>% 
-    ungroup() %>% 
-    summarize(percent_underestimated = 100*((chao - Species)/chao))
-  
-  t.test(tmp$percent_underestimated, tmp2$percent_underestimated)
-  
-}
 
 # how many sites and species ####
 {
@@ -288,12 +64,6 @@ rm(list=ls())
   ###### TESTING #######
   # This changes the "UniqueID" in veg_df (from Protocol_Site to Site_Year) and converts the "rich" variable from observed richness to chao-estimated true richness
   {
-    # replace observed richness with chao-estimated true richness
-    # first add protocol ID var to dfs
-    div.out$Protocol <- "Wetland"
-    div.out.ter$Protocol <- "Terrestrial"
-    
-    truerich <- bind_rows(div.out, div.out.ter) 
     # note that the "UniqueID" vars aren't the same
     head(truerich) # UniqueID = Site_Year
     head(veg_df) # UniqueID = Protocol_Site
@@ -789,24 +559,40 @@ rm(list=ls())
 
 # 5. permanovas of multivariate NMDS's ####
 {
-  # permanova using 0%, 45-55%, and >95% HD
+  # load veg site x sp matrices with only sites in 2 or 3 HF groups; calc chao dissimilarity
+  {
+    veg_2groups <- read.csv("data/cleaned/ordination data/veg site x sp mat - 2 HF groups.csv")
+    veg_3groups <- read.csv("data/cleaned/ordination data/veg site x sp mat - 3 HF groups.csv")
+    
+    veg_distance_2groups <- vegdist(veg_hf_2groups[,9:ncol(veg_hf_2groups)], method="chao", binary=T)
+    veg_distance_3groups <- vegdist(veg_hf_3groups[,9:ncol(veg_hf_3groups)], method="chao", binary=T)
+  }
+  
+  # permanovas using 3 HF bin groups: 0%, 45-55%, and >95% HD
   {
     # check for sig diffs among 2 groups
-    mrpp(veg_d2a, grouping=as.factor(veg_hf2a$HFbin)) # sig diff between groups based on mean score
+    mrpp(veg_distance_2groups, grouping=as.factor(veg_2groups$HFbin)) # sig diff between groups based on mean score
     
-    adonis2(veg_d2a ~ as.factor(veg_hf2a$HFbin) + as.factor(veg_hf2a$Protocol),
+    adonis2(veg_distance_2groups ~ as.factor(veg_2groups$HFbin) + as.factor(veg_2groups$Protocol),
             by="margin") # both significant
+    # differences between groups could be because of dispersion (variance) or mean; adonis2 is less sensitive to dispersion than mrpp
+    adonis2(veg_distance_2groups ~ as.factor(veg_2groups$HFbin)) # both significant
+    anova(betadisper(d= veg_distance_2groups, group=as.factor(veg_2groups$HFbin)))
     
     # check for sig diffs among 3 groups
-    library(RVAideMemoire)
-    library(ecodist)
+    mrpp(veg_distance_3groups, grouping=as.factor(veg_3groups$HFbin)) # sig diff between groups based on mean score
     
-    adonis2(veg_d3a ~ as.factor(veg_hf3a$HFbin) + as.factor(veg_hf3a$Protocol),
+    adonis2(veg_distance_3groups ~ as.factor(veg_3groups$HFbin) + 
+              as.factor(veg_3groups$Protocol),
             by="margin") # both significant
+    # differences between groups could be because of dispersion (variance) or mean; adonis2 is less sensitive to dispersion than mrpp
+    adonis2(veg_distance_3groups ~ as.factor(veg_3groups$HFbin)) # both significant
+    anova(betadisper(d= veg_distance_3groups, group=as.factor(veg_3groups$HFbin)))
+    # dispersion differences among 3 groups
     
-    pairwise.perm.manova(resp=veg_d3a, fact=veg_hf3a$HFbin, p.method="holm")
-    mrpp(veg_d3a, grouping=as.factor(veg_hf3a$HFbin)) # sig diff between groups based on mean score
-  
+    RVAideMemoire::pairwise.perm.manova(resp=veg_distance_3groups, 
+                                        fact=veg_3groups$HFbin, p.method="holm")
+    
   }
 }
 
@@ -814,47 +600,77 @@ rm(list=ls())
 {
   
   # HD
-  tmp <- hf_tot %>% 
-    filter(totdist_percent==0.00 | totdist_percent>=90.00 | totdist_percent>=45.00 & totdist_percent<=55.00)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0.00, "Low", ifelse(totdist_percent>=90.00, "High", "Int."))) 
-  tmpsummary <- tmp %>% 
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
     group_by(HFbin) %>% 
     summarize(N=length(totdist_percent),
               meddist=median(totdist_percent),
               IQR=IQR(totdist_percent))
-  tmpsummary
-  # write.csv(x=tmpsummary, file="/Users/carif/Dropbox/Desktop/Waterloo/AB plant and invert responses to HF/results/HD across bins - bins are 0-45-55-90.csv")
   
-  ggplot(tmp, aes(x=HFbin, y=totdist_percent)) +
-    geom_boxplot(fill="grey80") +
-    labs(x="Disturbance Level", y="Human Development (%)")
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
+    ggplot(., aes(x=HFbin, y=totdist_percent)) +
+        geom_boxplot(fill="grey80") +
+        labs(x="Disturbance Level", y="Human Development (%)")
   
   # richness
-  spR %>% 
-    filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
     group_by(HFbin) %>% 
-    summarize(N=length(rich),
-              med=median(rich),
-              IQR=IQR(rich))
+    summarize(N=length(rich_chao ),
+              medrich=median(rich_chao ),
+              IQR=IQR(rich_chao ))
+  
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
+    ggplot(., aes(x=HFbin, y=rich_chao )) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="True Species Richness (Chao-estimated)")
   
   # nonnatives
-  veg_exot %>% 
-    filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
     group_by(HFbin) %>% 
-    summarize(N=length(propexotic),
-              med=median(propexotic),
-              IQR=IQR(propexotic))
+    summarize(N=length(propexotic  ),
+              medrich=median(propexotic),
+              IQR=IQR(propexotic ))
+  
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
+    ggplot(., aes(x=HFbin, y=propexotic)) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="Proportion of Exotics (% of observed richness)")
   
   # csi
-  veg_CSI_HF %>% 
-    filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
+  # nonnatives
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
     group_by(HFbin) %>% 
     summarize(N=length(CSI),
-              med=median(CSI),
+              medrich=median(CSI),
               IQR=IQR(CSI))
+  
+  left_join(veg_df, 
+            select(veg_3groups, Protocol, Site, Year, HFbin),
+            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin)) %>% 
+    ggplot(., aes(x=HFbin, y=CSI)) +
+    geom_boxplot(fill="grey80") +
+    labs(x="Disturbance Level", y="Niche Specialization Index")
   
   
 }
