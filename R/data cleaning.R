@@ -1363,14 +1363,29 @@ hf <- left_join(hf,
       
       
       # compare underestimation for two protocols
-      tmp <- div.out.ter %>% 
+      ter_underestimation <- div.out.ter %>% 
         ungroup() %>% 
-        summarize(percent_underestimated = 100*((chao - Species)/chao))
-      tmp2 <- div.out %>% 
-        ungroup() %>% 
-        summarize(percent_underestimated = 100*((chao - Species)/chao))
+        summarize(
+          num_sp_underestimated = chao - Species,
+          percent_underestimated = 100*((chao - Species)/chao))
+      mean(ter_underestimation$num_sp_underestimated) # average num of missed species
+      mean(ter_underestimation$percent_underestimated) # average percent of missed species
       
-      t.test(tmp$percent_underestimated, tmp2$percent_underestimated)
+      wet_underestimation <- div.out %>% 
+        ungroup() %>% 
+        summarize(
+          num_sp_underestimated = chao - Species,
+          percent_underestimated = 100*((chao - Species)/chao))
+      mean(wet_underestimation$num_sp_underestimated) # average num of missed species
+      mean(wet_underestimation$percent_underestimated) # average percent of missed species
+      
+      # significant difference in the number of missing species 
+      t.test(ter_underestimation$num_sp_underestimated, 
+             wet_underestimation$num_sp_underestimated)
+      
+      # significant difference in the % of underestimation
+      t.test(ter_underestimation$percent_underestimated, 
+             wet_underestimation$percent_underestimated)
     }
     
     # load HF data ####
@@ -1378,13 +1393,14 @@ hf <- left_join(hf,
     # calculate total disturbance ####
     hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
     
-    # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
+    # SSI from 1000 randomizations excluding 170 rare sp (<= 3 occurrences)
     {
-      sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
+      sp_SSI <- read.csv("data/cleaned/ssi_mean_one rotation.csv", sep=",") %>% 
+        select(-X) # first column is just row nums and can be deleted
       colnames(sp_SSI) <- c("Species", "CV")
       
-      # 39 species have poor correlation among randomization runs
-      outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
+      # 37 species have poor correlation among randomization runs
+      outliers <- read.csv("data/cleaned/species_high_range_SSI_one rotation.csv")
       sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
       # sp_SSI <- sp_SSI_no_outliers
     }
@@ -1444,7 +1460,7 @@ hf <- left_join(hf,
       colnames(veg_df)[8] <- "rich_observed"
       
       head(truerich)
-      veg_df$tmpUniqueID <- paste(veg_df$UniqueID, veg_df$Year, sep="_")
+      veg_df$tmpUniqueID <- paste(veg_df$UniqueID, veg_df$Year, sep="_") # create unique ID that is protocol_site_year to match that of truerich
       veg_df <- left_join(veg_df,
                 select(truerich, UniqueID, "rich_chao" = chao),
                 by=c("tmpUniqueID" = "UniqueID")) %>% 
