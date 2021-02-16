@@ -1474,10 +1474,11 @@ hf <- left_join(hf,
   
   # prep df for NMDS with HD levels based on hd %; calculate distance measures ####
   {
-    # expand site x sp matrix 
+    # create veg PA df with only sp used in SSI calculations 
     veg_hfa <- veg_pa %>% 
       filter(Species %in% sp_SSI$Species) %>% 
       select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
+    # spread site x sp matrix and replace NAs with 0s for absent species 
     veg_hfa <- veg_hfa %>% 
       spread(key=Species, value=PA) %>% 
       gather(key=Species, value=PA, 8:ncol(.)) %>% 
@@ -1490,19 +1491,21 @@ hf <- left_join(hf,
                          by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
     
     # veg_hf_2groups has most & least dist communities
-    veg_hf_2groups <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90) %>% 
+    veg_hf_2groups <- veg_hfa %>% 
+      filter(totdist_percent==0 | totdist_percent>=90) %>% # keep only sites with HF == 0% or HF>= 90%
       mutate(HFbin = ifelse(totdist_percent==0, "Low", "High")) %>% 
       select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
       select(-totdist_percent)
-    # veg_hf_2groups %>% group_by(HFbin) %>% tally()
+    # veg_hf_2groups %>% group_by(HFbin) %>% tally()# n=125 sites in high bin; n=435 sites in low bin
     
+    # exclude species that were only detected 1x
     sptokeep2 <- colSums(veg_hf_2groups[,9:ncol(veg_hf_2groups)]) %>% data.frame() 
     sptokeep2$Species <- rownames(sptokeep2)
     colnames(sptokeep2) <- c("Obs", "Species")
     sptokeep2 <-  filter(sptokeep2, Obs > 1)
     veg_hf_2groups <- veg_hf_2groups %>% 
       gather(Species, PA, 9:ncol(.)) %>% 
-      filter(Species %in% sptokeep2$Species) %>% 
+      filter(Species %in% sptokeep2$Species) %>% # keep only species that were detected >1x
       spread(Species, PA)
     
     # veg_hf_3groups has most, least, and intermed dist communities
@@ -1511,7 +1514,7 @@ hf <- left_join(hf,
       select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
       select(-totdist_percent)
     
-    # veg_hf_3groups %>% group_by(HFbin) %>% tally()
+    # veg_hf_3groups %>% group_by(HFbin) %>% tally() # n= 125 sites in high grp; n=53 in intermediate; n=435 in low grp
     
     sptokeep3 <- colSums(veg_hf_3groups[,9:ncol(veg_hf_3groups)]) %>% data.frame() 
     sptokeep3$Species <- rownames(sptokeep3)
@@ -1521,8 +1524,12 @@ hf <- left_join(hf,
       gather(Species, PA, 9:ncol(.)) %>% 
       filter(Species %in% sptokeep3$Species) %>% 
       spread(Species, PA)
-    
-    veg_distance_2groups <- vegdist(veg_hf_2groups[,9:ncol(veg_hf_2groups)], method="jaccard", binary=T)
-    veg_distance_3groups <- vegdist(veg_hf_3groups[,9:ncol(veg_hf_3groups)], method="jaccard", binary=T)
+
+    # export files
+    # write.csv(veg_hf_2groups,
+    #           file="data/cleaned/ordination data/veg site x sp mat - 2 HF groups.csv", row.names = F)
+    # write.csv(veg_hf_3groups,
+    #           file="data/cleaned/ordination data/veg site x sp mat - 3 HF groups.csv", row.names = F)
+
   }
 }
