@@ -25,70 +25,10 @@ rm(list=ls())
     strip.text=element_text(size=10))
 }
 
-# prep CSI, species richness, and exotic species data frames ####
-{ 
-  # plant data ####
-  veg_pa <- read.csv("data/cleaned/ABMI veg cleaned_latlong.csv")
-  
-  # load HF data ####
-  hf <- read.csv("data/cleaned/Alb wetlands HF_latlong.csv") 
-  # calculate total disturbance ####
-  hf_tot <- hf %>% group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% summarize(totdist_percent=sum(Area_percent))
-  
-  # SSI from 1000 randomizations exclude 127 rare sp (<= 3 occurrences)
-  {
-    sp_SSI <- read.csv("data/cleaned/ssi_mean.csv", sep=",")
-    colnames(sp_SSI) <- c("Species", "CV")
-    
-    # 39 species have poor correlation among randomization runs
-    outliers <- read.csv("data/cleaned/species_high_range_SSI.csv")
-    sp_SSI_no_outliers <- sp_SSI %>% filter(Species %in% outliers$SCIENTIFIC_NAME == F)
-    # sp_SSI <- sp_SSI_no_outliers
-  }
-  
-  # calculate CSI : mean CV of each community (also compare the summed CV of each community) ####
-  {
-    veg_CSI_HF <- left_join(veg_pa, sp_SSI)
-    veg_CSI_HF <- veg_CSI_HF %>% 
-      group_by(Protocol,NRNAME, WetlandType,Site,Year) %>% 
-      summarize(CSI=mean(CV, na.rm = T)) # 211 sites have na value for at least 1 sp
-    
-    veg_CSI_HF <- left_join(veg_CSI_HF,hf_tot, by=c("NRNAME", "Protocol", "WetlandType", "Site", "Year")) 
-    veg_CSI_HF$UniqueID <- paste(veg_CSI_HF$Protocol, veg_CSI_HF$Site, sep="_")
-    
-  }
-  
-  # make sp richness df
-  {
-    spR <- veg_pa %>% 
-      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
-      group_by(Latitude, Longitude, Protocol, NRNAME, WetlandType, Site, Year) %>% 
-      summarize(rich=sum(PA))
-    spR <- inner_join(spR, hf_tot, by=c("Latitude", "Longitude", "Protocol", "NRNAME", "WetlandType", "Site", "Year"))
-    spR$UniqueID <- paste(spR$Protocol, spR$Site, sep="_")
-    
-  }
-  
-  # exotic species
-  {
-    exotics <- read.csv("data/cleaned/exotic_plants_ab.csv", sep=";")
-    veg_exot <- left_join(veg_pa, exotics, by=c("Species"="SPECIES")) %>% select(-TYPE)
-    veg_exot <- veg_exot %>% 
-      filter(Species %in% sp_SSI$Species) %>% # keep only non-rare species
-      group_by(Latitude, Longitude, Protocol, Site,Year, ORIGIN) %>% 
-      tally() %>% 
-      spread(key=ORIGIN, value=n) %>% 
-      replace_na(list(Exotic=0, Native=0,`Unknown/Undetermined`=0)) %>% 
-      rowwise() %>% 
-      mutate(rich=sum(Exotic, Native, `Unknown/Undetermined`),
-             propexotic=100*(Exotic/rich))
-    
-    veg_exot <- left_join(veg_CSI_HF, 
-                          veg_exot, 
-                          by=c("Latitude", "Longitude", "Protocol", "Site", "Year")) %>% 
-      select(-Exotic, -Native, -`Unknown/Undetermined`)
-  }
-  
+# load df with richness, CSI, and prop exotic sp
+{
+  veg_df <- read.csv("data/cleaned/veg_rich_CSI_exot.csv")
+  veg_df$Year <- as.factor(veg_df$Year) # convert to factor so it can be modeled with random intercept
 }
 
 # prep df for NMDS with HD levels based on hd %
@@ -146,11 +86,11 @@ rm(list=ls())
 
 # Fig 1a - sp richness vs HF (i.e. IDH) ####
 {
-  fig1a <- ggplot(spR, aes(x=totdist_percent, y=rich)) +
+  fig1a <- ggplot(veg_df, aes(x=totdist_percent, y=rich_observed)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
     geom_point(color="grey70", alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
-    geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
+    geom_smooth(data=veg_df, aes(x=totdist_percent, y=rich_observed, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotted")) +
     theme_classic() +
@@ -189,11 +129,11 @@ rm(list=ls())
 # Fig 1b - CSI vs. HF (multiple plots) ####
 {
   # black and white
-  fig1b <- ggplot(veg_CSI_HF, aes(x=totdist_percent, y=CSI)) +
+  fig1b <- ggplot(veg_df, aes(x=totdist_percent, y=CSI)) +
     labs(x="Total Human Development (%)", y="Niche Specialization") +
     geom_point(alpha=0.5, color="grey70") + 
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
-    geom_smooth(data=veg_CSI_HF, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
+    geom_smooth(data=veg_df, aes(x=totdist_percent, y=CSI, linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
     scale_linetype_manual(values=c("dashed", "dotted")) +
     theme_classic() +

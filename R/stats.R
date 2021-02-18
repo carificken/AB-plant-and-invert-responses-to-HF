@@ -9,7 +9,7 @@ library(vegan)
 
 rm(list=ls())
 
-# load df with rich_observedness, CSI, and prop exotic sp
+# load df with richness, CSI, and prop exotic sp
 {
   veg_df <- read.csv("data/cleaned/veg_rich_CSI_exot.csv")
   veg_df$Year <- as.factor(veg_df$Year) # convert to factor so it can be modeled with random intercept
@@ -198,7 +198,6 @@ rm(list=ls())
 # 2. How does CSI vary with HF ####
 {
   # both protocols
-  # terrestrial protocol
   {
     csi.linear <- lmer(CSI ~ totdist_percent + Protocol + 
                              (1|Year),
@@ -209,6 +208,7 @@ rm(list=ls())
     
     summary(csi.linear) # variance on group RE indistinguishable from zero
     summary(csi.poly) # variance on group RE different from zero
+    anova(csi.poly, type=2)
     anova(csi.linear, csi.poly)
     AIC(csi.linear, csi.poly) # csi poly
     AIC(csi.poly) - AIC(csi.linear)
