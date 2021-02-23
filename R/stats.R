@@ -581,7 +581,6 @@ rm(list=ls())
       group_by(HFbin) %>% 
       tally() # very different sample sizes...
     
-    
     # terrestrial protocol
     # differences between groups could be because of dispersion (variance) or mean; adonis2 is less sensitive to dispersion than mrpp
     adonis2(veg_distance_2groups_ter ~ veg_2groups_ter$HFbin) #  significant
@@ -606,7 +605,7 @@ rm(list=ls())
     # both protocols
     adonis2(veg_distance_3groups ~ veg_3groups$HFbin) #  significant
     anova(betadisper(d= veg_distance_3groups, 
-                     group=veg_3groups$HFbin)) # no significant dispersion
+                     group=veg_3groups$HFbin)) # significant dispersion
     veg_3groups %>% 
       group_by(HFbin) %>% 
       tally() # very different sample sizes...
@@ -638,77 +637,66 @@ rm(list=ls())
 
 # 6. comparison of HD, rich_observed, nonnatives, and CSI across low, med, high hd levels ####
 {
-  
-  # HD
-  left_join(veg_df, 
+  # make new df only with sites in 3 hf bins
+  veg_df_3groups <- left_join(veg_df, 
             select(veg_3groups, Protocol, Site, Year, HFbin),
             by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
+    filter(!is.na(HFbin))
+  # make HF bin and ordered factor
+  veg_df_3groups$HFbin <- factor(veg_df_3groups$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
+  
+  ss <- getME(tmp,c("theta","fixef"))
+  m2 <- update(tmp,start=ss,control=lmerControl(optCtrl=list(maxfun=2e4)))
+  
+  anova(m2, type=2)
+  
+  emmeans::emmeans(m2, list(pairwise ~ HFbin), adjust = "tukey")
+  
+  # HD
+  veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(totdist_percent),
               meddist=median(totdist_percent),
               IQR=IQR(totdist_percent))
   
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, as.factor(Year), HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
-    ggplot(., aes(x=HFbin, y=totdist_percent)) +
+  anova(lmer(totdist_percent ~ HFbin + 
+               Protocol + (1|Year),
+             data=veg_df_3groups, REML=F), type=2)
+  
+  ggplot(veg_df_3groups, aes(x=HFbin, y=totdist_percent)) +
         geom_boxplot(fill="grey80") +
         labs(x="Disturbance Level", y="Human Development (%)")
   
-  # rich_observedness
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
+  # richness
+  veg_df_3groups %>% 
     group_by(HFbin) %>% 
-    summarize(N=length(rich_observed_chao ),
-              medrich_observed=median(rich_observed_chao ),
-              IQR=IQR(rich_observed_chao ))
+    summarize(N=length(rich_observed),
+              medrich_observed=median(rich_observed),
+              IQR=IQR(rich_observed))
   
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
-    ggplot(., aes(x=HFbin, y=rich_observed_chao )) +
+  ggplot(veg_df_3groups, aes(x=HFbin, y=rich_observed)) +
     geom_boxplot(fill="grey80") +
-    labs(x="Disturbance Level", y="True Species rich_observedness (Chao-estimated)")
+    labs(x="Disturbance Level", y="Species Richness (Observed)")
   
   # nonnatives
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
+  veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(propexotic  ),
               medrich_observed=median(propexotic),
               IQR=IQR(propexotic ))
   
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
-    ggplot(., aes(x=HFbin, y=propexotic)) +
+  ggplot(veg_df_3groups, aes(x=HFbin, y=propexotic)) +
     geom_boxplot(fill="grey80") +
-    labs(x="Disturbance Level", y="Proportion of Exotics (% of observed rich_observedness)")
+    labs(x="Disturbance Level", y="Proportion of Exotics (% of observed richness)")
   
   # csi
-  # nonnatives
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
+  veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(CSI),
               medrich_observed=median(CSI),
               IQR=IQR(CSI))
   
-  left_join(veg_df, 
-            select(veg_3groups, Protocol, Site, Year, HFbin),
-            by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
-    filter(!is.na(HFbin)) %>% 
-    ggplot(., aes(x=HFbin, y=CSI)) +
+  ggplot(veg_df_3groups, aes(x=HFbin, y=CSI)) +
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Niche Specialization Index")
   
@@ -812,3 +800,5 @@ rm(list=ls())
   piecewiseSEM::rsquared(nr.poly) 
   AIC(nr.poly) - AIC(nr.linear)
 }
+
+# 10. species typical of binned sites

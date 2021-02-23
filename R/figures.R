@@ -32,56 +32,27 @@ rm(list=ls())
 }
 
 # prep df for NMDS with HD levels based on hd %
+# load veg site x sp matrices with only sites in 2 or 3 HF groups; calc chao dissimilarity
 {
-  library(vegan)
-  veg_hfa <- veg_pa %>% 
-    filter(Species %in% sp_SSI$Species) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, Species, PA)
-  veg_hfa <- veg_hfa %>% 
-    spread(key=Species, value=PA) %>% 
-    gather(key=Species, value=PA, 8:ncol(.)) %>% 
-    replace_na(list(PA=0)) %>% 
-    spread(key=Species, value=PA) 
+  veg_2groups <- read.csv("data/cleaned/ordination data/veg site x sp mat - 2 HF groups.csv")
+  veg_2groups$Year <- as.factor(veg_2groups$Year)
+  # seaparate protocols
+  veg_2groups_ter <- veg_2groups %>% filter(Protocol=="Terrestrial")
+  veg_2groups_wet <- veg_2groups %>% filter(Protocol=="Wetland")
   
-  veg_hfa <- left_join(veg_hfa, 
-                       hf_tot,  
-                       by=c("Latitude","Longitude", "NRNAME", "Protocol", "WetlandType", "Site", "Year"))
+  veg_3groups <- read.csv("data/cleaned/ordination data/veg site x sp mat - 3 HF groups.csv")
+  veg_3groups$Year <- as.factor(veg_3groups$Year)
+  # seaparate protocols
+  veg_3groups_ter <- veg_3groups %>% filter(Protocol=="Terrestrial")
+  veg_3groups_wet <- veg_3groups %>% filter(Protocol=="Wetland")
   
-  # veg_hf2 has most & least dist communities
-  veg_hf2a <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90) %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", "High")) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
-    select(-totdist_percent)
-  # veg_hf2a %>% group_by(HFbin) %>% tally()
+  veg_distance_2groups <-  vegdist(veg_2groups[,9:ncol(veg_2groups)], method="chao", binary=T)
+  veg_distance_2groups_ter <- vegdist(veg_2groups_ter[,9:ncol(veg_2groups_ter)], method="chao", binary=T)
+  veg_distance_2groups_wet <- vegdist(veg_2groups_wet[,9:ncol(veg_2groups_wet)], method="chao", binary=T)
   
-  sptokeep2 <- colSums(veg_hf2a[,9:ncol(veg_hf2a)]) %>% data.frame() 
-  sptokeep2$Species <- rownames(sptokeep2)
-  colnames(sptokeep2) <- c("Obs", "Species")
-  sptokeep2 <-  filter(sptokeep2, Obs > 1)
-  veg_hf2a <- veg_hf2a %>% 
-    gather(Species, PA, 9:ncol(.)) %>% 
-    filter(Species %in% sptokeep2$Species) %>% 
-    spread(Species, PA)
-  
-  # veg_hf3 has most, least, and intermed dist communities
-  veg_hf3a <- veg_hfa %>% filter(totdist_percent==0 | totdist_percent>=90 | totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", ifelse(totdist_percent>=90, "High", "Int."))) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything()) %>% 
-    select(-totdist_percent)
-  
-  # veg_hf3a %>% group_by(HFbin) %>% tally()
-
-  sptokeep3 <- colSums(veg_hf3a[,9:ncol(veg_hf3a)]) %>% data.frame() 
-  sptokeep3$Species <- rownames(sptokeep3)
-  colnames(sptokeep3) <- c("Obs", "Species")
-  sptokeep3 <-  filter(sptokeep3, Obs > 1)
-  veg_hf3a <- veg_hf3a %>% 
-    gather(Species, PA, 9:ncol(.)) %>% 
-    filter(Species %in% sptokeep3$Species) %>% 
-    spread(Species, PA)
-  
-  veg_d2a <- vegdist(veg_hf2a[,9:ncol(veg_hf2a)], method="jaccard", binary=T)
-  veg_d3a <- vegdist(veg_hf3a[,9:ncol(veg_hf3a)], method="jaccard", binary=T)
+  veg_distance_3groups <-  vegdist(veg_3groups[,9:ncol(veg_3groups)], method="chao", binary=T)
+  veg_distance_3groups_ter <- vegdist(veg_3groups_ter[,9:ncol(veg_3groups_ter)], method="chao", binary=T)
+  veg_distance_3groups_wet <- vegdist(veg_3groups_wet[,9:ncol(veg_3groups_wet)], method="chao", binary=T)
 }
 
 # Fig 1a - sp richness vs HF (i.e. IDH) ####
@@ -154,7 +125,7 @@ rm(list=ls())
   
   fig1_twopanel
   ggsave(plot=fig1_twopanel,
-         filename = "results/figs/fig1ab.jpeg",
+         filename = "manuscript/fig1ab_updated.jpeg",
          width=10, height=15, units="cm")
   
   # colored and faceted by protocol
@@ -190,10 +161,10 @@ rm(list=ls())
 
 # Fig 2a - exotic species vs HF ####
 {
-  fig2a <- ggplot(veg_exot, aes(x=totdist_percent, y=propexotic)) +
+  fig2a <- ggplot(veg_df, aes(x=totdist_percent, y=propexotic)) +
     geom_point(alpha=0.5, color="grey70") +
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
-    geom_smooth(data=veg_exot, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
+    geom_smooth(data=veg_df, aes(x=totdist_percent, y=propexotic,linetype=Protocol), 
                 method="lm", formula=y~poly(x,2, raw=T), se=F, size=0.5, color=1) +
     
     scale_linetype_manual(values=c("dashed", "dotted")) +
@@ -205,25 +176,20 @@ rm(list=ls())
 
 # Fig 2b - prop exotic across bins ####
 {
-  hf_bin3 <- hf_tot %>% filter(totdist_percent==0 | 
-                                 totdist_percent>=90 | 
-                                 totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", 
-                          ifelse(totdist_percent>=90, "High", "Int."))) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+  # make new df only with sites in 3 hf bins
+  veg_df_3groups <- left_join(veg_df, 
+                              select(veg_3groups, Protocol, Site, Year, HFbin),
+                              by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin))
+  # make HF bin and ordered factor
+  veg_df_3groups$HFbin <- factor(veg_df_3groups$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
-  
-  exot_bin <- left_join(select(ungroup(hf_bin3),Protocol, WetlandType, Year, Site, HFbin ), 
-                        veg_exot, 
-                        by=c("Protocol", "WetlandType", "Year", "Site"))
-  
-  
-  exot_bin$UniqueID <- paste(exot_bin$Protocol, exot_bin$Site, sep="_")
-  exot_bin$HFbin <- factor(exot_bin$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
-  
-  fig2b <- ggplot(exot_bin, aes(x=HFbin, y=propexotic)) +
+
+  fig2b <-   ggplot(veg_df_3groups, aes(x=HFbin, y=propexotic)) +
     geom_boxplot(fill="grey80") +
-    labs(x="Human Development Level", y="Nonnative Sp. (%)") + font_sizes
+    labs(x="Human Development Level", y="Nonnative Sp. (%)") + 
+    theme_classic() +
+    font_sizes + transparent_plot
   fig2b
   
   myleg <- get_legend(fig2a)
@@ -235,9 +201,9 @@ rm(list=ls())
                         ncol=1, nrow=2,
                         rel_heights=c(0.1,1))
   fig2
-  ggsave(plot=fig2,
-         filename="results/figs/fig2ab.jpeg",
-         width=10, height=15, units="cm")
+  # ggsave(plot=fig2,
+  #        filename="manuscript/fig2ab_updated.jpeg",
+  #        width=10, height=15, units="cm")
   
 }
 
@@ -251,32 +217,32 @@ rm(list=ls())
     
     # run ord 2 levels
     {
-      veg.nmds_final2 <- metaMDS(veg_hf2a[,9:ncol(veg_hf2a)], 
-                                 distance="jaccard", 
+      veg.nmds_final2 <- metaMDS(veg_2groups[,9:ncol(veg_2groups)], 
+                                 distance="raup", 
                                  binary=T, k=5,
                                  trymax=100,
                                  sratmax=0.999999,
                                  maxit=300)
-      veg.nmds_final2a <- metaMDS(veg_hf2a[,9:ncol(veg_hf2a)], 
-                                  distance="jaccard", 
-                                  binary=T, k=5,
-                                  trymax=100,
-                                  sratmax=0.999999,
-                                  maxit=300,
-                                  previous.best = veg.nmds_final2)
+      # veg.nmds_final2a <- metaMDS(veg_2groups[,9:ncol(veg_2groups)], 
+      #                             distance="raup", 
+      #                             binary=T, k=5,
+      #                             trymax=100,
+      #                             sratmax=0.999999,
+      #                             maxit=300,
+      #                             previous.best = veg.nmds_final2)
       
       
       # extract site scores and convert to df
-      veg.scores2 <- data.frame(scores(veg.nmds_final2a, "sites"))
+      veg.scores2 <- data.frame(scores(veg.nmds_final2, "sites"))
       # add in protocol, site, year, 
-      veg.scores2$Protocol <- as.factor(veg_hf2a$Protocol)
-      veg.scores2$Site <- veg_hf2a$Site
-      veg.scores2$Year <- veg_hf2a$Year
-      veg.scores2$NRNAME <- veg_hf2a$NRNAME
-      veg.scores2$HFbin <- veg_hf2a$HFbin
-      # veg.scores2$HFbin <- recode(veg_hf2a$HFbin, "1"="Low", "10"="High")
+      veg.scores2$Protocol <- as.factor(veg_2groups$Protocol)
+      veg.scores2$Site <- veg_2groups$Site
+      veg.scores2$Year <- veg_2groups$Year
+      veg.scores2$NRNAME <- veg_2groups$NRNAME
+      veg.scores2$HFbin <- veg_2groups$HFbin
+      # veg.scores2$HFbin <- recode(veg_2groups$HFbin, "1"="Low", "10"="High")
       
-      spscores2 <- data.frame(scores(veg.nmds_final2a, display="species"))
+      spscores2 <- data.frame(scores(veg.nmds_final2, display="species"))
       spscores2$Species <- rownames(spscores2)
       
       # add 5 sp most strongly post & neg cor with axis 1
@@ -293,28 +259,34 @@ rm(list=ls())
         stat_ellipse(data=veg.scores2, 
                      aes(x=NMDS1, y=NMDS2, 
                          color=as.factor(HFbin))) +
-        scale_color_manual(values=c("#1b9e77", "#d95f02"), name="Dist.") +
-        scale_shape_manual(values=c(1,16), name="Protocol") +
+        scale_color_manual(values=c("#1b9e77", "#d95f02"), name="Human Dev. Level", guide=guide_legend(title.position = "top")) +
+        scale_shape_manual(values=c(1,17), name="Protocol", guide=guide_legend(title.position = "top")) +
         # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2),
         #              color=1,
         #              arrow=arrow(length=unit(0.3, "cm"))) +
         # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
         #                  box.padding=1, size=3.5) +
+        theme_classic() + 
         theme(legend.position="top") + font_sizes
       nmds2grps
       
       # ggsave(plot=nmds2grps,
-      #        filename="results/figs/nmds2grps based on hf.jpeg",
+      #        filename="manuscript/nmds2grps - updated.jpeg",
       #        width=12, height=10, units="cm")
     }
     
     # run ord 3 levels
     {
       # 
-      veg.nmds_final3 <- metaMDS(veg_hf3a[,9:ncol(veg_hf3a)], 
-                                 distance="jaccard", binary=T, 
+      veg.nmds_final3 <- metaMDS(veg_3groups[,9:ncol(veg_3groups)], 
+                                 distance="raup", binary=T, 
                                  k=5,trymax=200,
                                  maxit=500, sratmax=0.99999999, sfgrmin=1e-8)
+      veg.nmds_final3a <- metaMDS(veg_3groups[,9:ncol(veg_3groups)], 
+                                 distance="raup", binary=T, 
+                                 k=5,trymax=200,
+                                 maxit=500, sratmax=0.99999999, sfgrmin=1e-8,
+                                 previous.best = veg.nm)
       
       # extract site scores and convert to df
       veg.scores3 <- data.frame(scores(veg.nmds_final3, "sites"))
