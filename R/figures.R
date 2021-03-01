@@ -297,11 +297,11 @@ rm(list=ls())
       # extract site scores and convert to df
       veg.scores3 <- data.frame(scores(veg.nmds_final3, "sites"))
       # add in protocol, site, year, 
-      veg.scores3$Protocol <- as.factor(veg_hf3a$Protocol)
-      veg.scores3$Site <- veg_hf3a$Site
-      veg.scores3$Year <- veg_hf3a$Year
-      veg.scores3$NRNAME <- veg_hf3a$NRNAME
-      veg.scores3$HFbin <- veg_hf3a$HFbin
+      veg.scores3$Protocol <- as.factor(veg_3groups$Protocol)
+      veg.scores3$Site <- veg_3groups$Site
+      veg.scores3$Year <- veg_3groups$Year
+      veg.scores3$NRNAME <-  veg_3groups$NRNAME
+      veg.scores3$HFbin <- veg_3groups$HFbin
       
       spscores3 <- data.frame(scores(veg.nmds_final3, display="species"))
       spscores3$Species <- rownames(spscores3)
@@ -313,23 +313,29 @@ rm(list=ls())
         geom_point(data=veg.scores3, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin),
+                       fill=as.factor(HFbin),
                        shape=as.factor(Protocol)),
                    size=2) +
         stat_ellipse(data=veg.scores3, 
                      aes(x=NMDS1, y=NMDS2, 
                          color=as.factor(HFbin))) +
         scale_color_manual(values=c("#1b9e77","#7570b3", "#d95f02"), name="HD Level") +
-        scale_shape_manual(values=c(1,16), name="Protocol") +
+        scale_fill_manual(values=c("#1b9e7750","#7570b350", "#d95f0250"), name="HD Level" ) +
+        scale_shape_manual(values=c(1,21), name="Protocol") +
+        guides(color=guide_legend(title.position = "top"),
+               fill=guide_legend(title.position = "top"),
+               shape=guide_legend(title.position = "top")) + 
         # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2), 
         #              color=1,
         #              arrow=arrow(length=unit(0.3, "cm"))) +
         # geom_label_repel(aes(x=NMDS1,y=NMDS2,label=Species),
         #                  box.padding=1, size=3.5) +
+        theme_classic() + 
         theme(legend.position="top") + font_sizes
       nmds3grps
       
       # ggsave(plot=nmds3grps,
-      #        filename="results/figs/nmds3grps.jpeg",
+      #        filename="manuscript/nmds3grps - updated.jpeg",
       #        width=12, height=10, units="cm")
       
       # combined ord figs
@@ -531,34 +537,37 @@ rm(list=ls())
 
 # fig s3 - CSI across HD levels ####
 {
-  hf_bin3 <- hf_tot %>% filter(totdist_percent==0 | 
-                                 totdist_percent>=90 | 
-                                 totdist_percent>=45 & totdist_percent<=55)  %>% 
-    mutate(HFbin = ifelse(totdist_percent==0, "Low", 
-                          ifelse(totdist_percent>=90, "High", "Int."))) %>% 
-    select(Latitude, Longitude, NRNAME, Protocol, WetlandType, Site, Year, HFbin, everything())
+  # make new df only with sites in 3 hf bins
+  veg_df_3groups <- left_join(veg_df, 
+                              select(veg_3groups, Protocol, Site, Year, HFbin),
+                              by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
+    filter(!is.na(HFbin))
+  # make HF bin an ordered factor
+  veg_df_3groups$HFbin <- factor(veg_df_3groups$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
   
-  csi_bin <- left_join(select(ungroup(hf_bin3),Protocol, WetlandType, Year, Site, HFbin ), 
-                       veg_CSI_HF, 
-                       by=c("Protocol", "WetlandType", "Year", "Site"))
-  
-  ggplot(csi_bin, aes(x=HFbin, y=CSI)) +
+  ggplot(veg_df_3groups, aes(x=HFbin, y=CSI)) +
+    geom_boxplot(fill="grey80") +
     labs(x="Human Development Level", y="Niche Specialization") +
-    geom_boxplot(fill="grey90") + font_sizes
+    theme_classic() +
+    font_sizes
   
-  # ggsave(filename="results/figs/Figure S3.jpeg",
-  #        height=7, width=7, units="cm")
+  ggsave(filename="manuscript/Figure S3 - updated.jpeg",
+         height=7, width=7, units="cm")
   
 }
 
 # fig s4. native vs nonnative vs total richness (not prop) across gradient
 {
-  veg_exot2 <- veg_exot %>% mutate(richexot=round(rich*(propexotic/100),0)) %>% 
-    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, "Total"=rich, "Nonnative"=richexot) %>% 
-    mutate(Native=Total-Nonnative) %>% 
+  # first copmuter nonnative richness from the prop exotics
+  exotics <- veg_df %>% 
+    mutate(exot_rich=round(rich_observed*(propexotic/100),0)) %>% 
+    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, 
+           "Total"=rich_observed, "Nonnative"=exot_rich) %>% 
+    mutate(Native=Total-Nonnative)  %>% 
     gather(., key="Type", value="Richness", 7:9)
   
-  nat_rich <- ggplot(filter(veg_exot2, Type=="Native"), aes(x=totdist_percent, y=Richness)) +
+  nat_rich <- ggplot(filter(exotics, Type=="Native"), 
+                     aes(x=totdist_percent, y=Richness)) +
     geom_point(alpha=0.5, size=1, col="grey70") +
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, col=1) +
     labs(x="Total Human Development (%)", y="Native Species Richness") +
@@ -568,7 +577,7 @@ rm(list=ls())
     theme(legend.position = "top",
           legend.title = element_blank())
   nat_rich
-  nonnat_rich <- ggplot(filter(veg_exot2, Type=="Nonnative"), aes(x=totdist_percent, y=Richness)) +
+  nonnat_rich <- ggplot(filter(exotics, Type=="Nonnative"), aes(x=totdist_percent, y=Richness)) +
     geom_point(alpha=0.5, size=1, col="grey70") +
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, col=1) +
     labs(x="Total Human Development (%)", y="Nonnative Species Richness") +
@@ -580,9 +589,9 @@ rm(list=ls())
   nonnat_rich
   native_nonnative_richness <- plot_grid(nat_rich, nonnat_rich, labels="auto", ncol=2)
   
-  # ggsave(plot=native_nonnative_richness,
-  #        filename = "results/figs/native and nonnative richness.jpeg",
-  #        width=15, height=8, units="cm")
+  ggsave(plot=native_nonnative_richness,
+         filename = "manuscript/native and nonnative richness - updated.jpeg",
+         width=15, height=8, units="cm")
 }
 
 # rich vs HF x Exotics ####

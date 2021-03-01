@@ -571,6 +571,16 @@ rm(list=ls())
     veg_distance_3groups_wet <- vegdist(veg_3groups_wet[,9:ncol(veg_3groups_wet)], method="chao", binary=T)
   }
   
+  # num of wetlands per group
+  {
+    veg_2groups %>% 
+      group_by(HFbin) %>% 
+      tally()
+    veg_3groups %>% 
+      group_by(HFbin) %>% 
+      tally()
+  }
+  
   # permanovas using 2 HF bin groups: 0% and >95% HD
   {
     # both protocols
@@ -642,15 +652,9 @@ rm(list=ls())
             select(veg_3groups, Protocol, Site, Year, HFbin),
             by=c("Protocol", "Site", "Year")) %>% # add bin number to HF df
     filter(!is.na(HFbin))
-  # make HF bin and ordered factor
+  # make HF bin an ordered factor
   veg_df_3groups$HFbin <- factor(veg_df_3groups$HFbin, ordered=T, levels=c("Low", "Int.", "High"))
-  
-  ss <- getME(tmp,c("theta","fixef"))
-  m2 <- update(tmp,start=ss,control=lmerControl(optCtrl=list(maxfun=2e4)))
-  
-  anova(m2, type=2)
-  
-  emmeans::emmeans(m2, list(pairwise ~ HFbin), adjust = "tukey")
+
   
   # HD
   veg_df_3groups %>% 
@@ -700,6 +704,15 @@ rm(list=ls())
     geom_boxplot(fill="grey80") +
     labs(x="Disturbance Level", y="Niche Specialization Index")
   
+  anova(lmer(CSI ~ HFbin + 
+               Protocol + (1|Year),
+             data=veg_df_3groups, REML=F))
+  emmeans::emmeans(lmer(CSI ~ HFbin + 
+                          Protocol + (1|Year),
+                        data=veg_df_3groups, REML=F),
+                   list(pairwise ~ HFbin),
+                   adjust="tukey")
+
   
 }
 
@@ -761,38 +774,41 @@ rm(list=ls())
 
 # 9. trends in native vs nonnative richness over HD gradient#### NEEDS UPDATING
 {
-  veg_exot2 <- veg_exot %>% mutate(rich_observedexot=round(rich_observed*(propexotic/100),0)) %>% 
-    select(NRNAME, Protocol, WetlandType, Site, Year, UniqueID, totdist_percent, 
-           "Total"=rich_observed, "Nonnative"=rich_observedexot) %>% 
+  # first copmuter nonnative richness from the prop exotics
+  exotics <- veg_df %>% 
+    mutate(exot_rich=round(rich_observed*(propexotic/100),0)) %>% 
+    select(NRNAME, Protocol, WetlandType, Site, Year, totdist_percent, 
+           "Total"=rich_observed, "Nonnative"=exot_rich) %>% 
     mutate(Native=Total-Nonnative) 
-  veg_exot2$Year <- as.factor(veg_exot$Year)
+  exotics$Year <- as.factor(exotics$Year)
   
-  head(veg_exot2)
+  head(exotics)
   
   # nonnative species
   nnr.linear <- lmer(Nonnative ~ totdist_percent + 
                         Protocol + 
                         (1|Year),
-                      data=veg_exot2, REML=F)
+                      data=exotics, REML=F)
   nnr.poly <- lmer(Nonnative ~ poly(totdist_percent,2, raw=T) + 
                       Protocol + 
                       (1|Year),
-                    data=veg_exot2, REML=F)
+                    data=exotics, REML=F)
   anova(nnr.linear, type=2) # RE of unique site ID should be kept
   anova(nnr.poly, type=2) # RE of unique site ID should be kept
   anova(nnr.linear, nnr.poly) # poly is better
   summary(nnr.poly)
-  piecewiseSEM::rsquared(nnr.poly) RAIC(nnr.poly) - AIC(nnr.linear)
+  piecewiseSEM::rsquared(nnr.poly) 
+  AIC(nnr.poly) - AIC(nnr.linear)
   
   # native species
   nr.linear <- lmer(Native ~ totdist_percent + 
                        Protocol + 
                        (1|Year),
-                     data=veg_exot2, REML=F)
+                     data=exotics, REML=F)
   nr.poly <- lmer(Native ~ poly(totdist_percent,2, raw=T) + 
                      Protocol + 
                      (1|Year),
-                   data=veg_exot2, REML=F)
+                   data=exotics, REML=F)
   anova(nr.linear, type=2) # RE of unique site ID should be kept
   anova(nr.poly, type=2) # RE of unique site ID should be kept
   anova(nr.linear, nr.poly) # poly is better
