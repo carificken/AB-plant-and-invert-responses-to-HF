@@ -2,6 +2,7 @@
 
 library(tidyverse); library(cowplot); library(ggrepel)
 library(lme4)
+library(vegan)
 
 rm(list=ls())
 
@@ -219,16 +220,18 @@ rm(list=ls())
     {
       veg.nmds_final2 <- metaMDS(veg_2groups[,9:ncol(veg_2groups)], 
                                  distance="raup", 
-                                 binary=T, k=5,
+                                 binary=T, k=7,
                                  trymax=100,
                                  sratmax=0.999999,
-                                 maxit=300)
-      # veg.nmds_final2a <- metaMDS(veg_2groups[,9:ncol(veg_2groups)], 
-      #                             distance="raup", 
-      #                             binary=T, k=5,
+                                 sfgrmin = 1e-8,
+                                 maxit=500)
+      
+      # veg.nmds_final2a <- metaMDS(veg_2groups[,9:ncol(veg_2groups)],
+      #                             distance="raup",
+      #                             binary=T, k=6,
       #                             trymax=100,
       #                             sratmax=0.999999,
-      #                             maxit=300,
+      #                             maxit=500,
       #                             previous.best = veg.nmds_final2)
       
       
@@ -248,19 +251,22 @@ rm(list=ls())
       # add 5 sp most strongly post & neg cor with axis 1
       impsp_5 <- bind_rows(top_n(spscores2, 5, wt=NMDS1),
                            top_n(spscores2, -5, wt=NMDS1))
+      impsp_5 %>% arrange(desc(NMDS1)) # high NMDS1 values = high HD; low NMDS1 vals = low HD 
       
-      # note 5 axes; no convergence
+      # note 7 axes; convergence
       nmds2grps <- ggplot(data=impsp_5) +
         geom_point(data=veg.scores2, 
                    aes(x=NMDS1, y=NMDS2, 
                        color=as.factor(HFbin),
+                       fill=as.factor(HFbin),
                        shape=as.factor(Protocol)),
                    size=2) +
         stat_ellipse(data=veg.scores2, 
                      aes(x=NMDS1, y=NMDS2, 
                          color=as.factor(HFbin))) +
         scale_color_manual(values=c("#1b9e77", "#d95f02"), name="Human Dev. Level", guide=guide_legend(title.position = "top")) +
-        scale_shape_manual(values=c(1,17), name="Protocol", guide=guide_legend(title.position = "top")) +
+        scale_fill_manual(values=c("#1b9e7750", "#d95f0250"), name="Human Dev. Level", guide=guide_legend(title.position = "top")) +
+        scale_shape_manual(values=c(21,24), name="Protocol", guide=guide_legend(title.position = "top")) +
         # geom_segment(aes(x=0,y=0,xend=NMDS1,yend=NMDS2),
         #              color=1,
         #              arrow=arrow(length=unit(0.3, "cm"))) +
