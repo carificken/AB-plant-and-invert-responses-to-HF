@@ -1280,6 +1280,13 @@ hf <- left_join(hf,
           wet_vascplant_pa <- wet_vascplant_pa %>% 
             filter(UniqueID %in% sites_wet$UniqueID) 
           
+          # how many transects per site
+          wet_vascplant_pa %>% 
+            distinct(UniqueID, Transect) %>% 
+            group_by(UniqueID) %>% 
+            tally() %>%
+            filter(n==5) %>% nrow()
+          
         }
         
         # estimates of true diversity
