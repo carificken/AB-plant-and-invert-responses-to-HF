@@ -60,7 +60,7 @@ rm(list=ls())
                             (1|Year),
                           data=veg_df, REML=F)
     
-    anova(rich.linear) # RE of unique site ID should be kept
+    anova(rich.linear, type=2) # RE of unique site ID should be kept
     anova(rich.poly, type=2) # RE of unique site ID should be kept
     anova(rich.linear, rich.poly) # poly is better
     
@@ -208,6 +208,7 @@ rm(list=ls())
     
     summary(csi.linear) # variance on group RE indistinguishable from zero
     summary(csi.poly) # variance on group RE different from zero
+    anova(csi.linear, type=2)
     anova(csi.poly, type=2)
     anova(csi.linear, csi.poly)
     AIC(csi.linear, csi.poly) # csi poly
@@ -286,6 +287,7 @@ rm(list=ls())
     anova(rich.poly.exot, rich.poly.exot.interaction) # interaction is best model
     summary(rich.poly.exot.interaction)
     anova(rich.poly.exot.interaction, type=2)
+    anova(rich.poly, rich.poly.exot.interaction)
     
     piecewiseSEM::rsquared(rich.poly.exot.interaction) # best model
     
@@ -416,6 +418,38 @@ rm(list=ls())
 # 0. test for spatial autocorrelation - Moran's I ####
 {
   
+  # save residuals from best models - both protocols
+  {
+    rich.poly.resid <- data.frame( Site = filter(veg_df)$Site,
+                                       Year = filter(veg_df)$Year,
+                                       Lat = filter(veg_df)$Latitude,
+                                       Long = filter(veg_df)$Longitude,
+                                       Residuals=residuals(rich.poly) )
+    csi.poly.resid <- data.frame(Site = filter(veg_df)$Site,
+                                     Year = filter(veg_df)$Year,
+                                     Lat = filter(veg_df)$Latitude,
+                                     Long = filter(veg_df)$Longitude,
+                                     Residuals=residuals(csi.poly) )
+    
+    rich.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df)$Site,
+                                                       Year = filter(veg_df)$Year,
+                                                       Lat = filter(veg_df)$Latitude,
+                                                       Long = filter(veg_df)$Longitude,
+                                                       Residuals=residuals(rich.poly.exot.interaction) )
+    csi.poly.exot.interaction.resid <- data.frame(Site = filter(veg_df)$Site,
+                                                      Year = filter(veg_df)$Year,
+                                                      Lat = filter(veg_df)$Latitude,
+                                                      Long = filter(veg_df)$Longitude,
+                                                      Residuals=residuals(csi.poly.exot.interaction) )
+    save(rich.poly.resid, 
+         csi.poly.resid, 
+         rich.poly.exot.interaction.resid, 
+         csi.poly.exot.interaction.resid,
+    file="results/Model residuals - both protocols - 030221.Rdata")
+    
+    
+  }  
+  
   # save residuals from best models - terrestrial protocol
   {
     ter.rich.poly.resid <- data.frame( Site = filter(veg_df, Protocol=="Terrestrial")$Site,
@@ -474,10 +508,23 @@ rm(list=ls())
     
   }
   
-  # rich_observedness w/ ape::Moran.I
+  # richness w/ ape::Moran.I
   {
     head(veg_df)
-    
+    # both protocols
+    {
+      # create inverse distance matrix
+      rich.d <- as.matrix(dist(cbind(filter(veg_df)$Longitude, 
+                                         filter(veg_df)$Latitude)))
+      rich.d.inv <- 1/rich.d
+      diag(rich.d.inv) <- 0
+      rich.d.inv[1:5, 1:5] # inf values have same coords
+      rich.d.inv[is.infinite(rich.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df)$rich_observed, 
+              rich.d.inv) # yes spatial autocorr
+    }
+
     # terrestrial
     {
       # create inverse distance matrix
@@ -510,6 +557,18 @@ rm(list=ls())
   
   # CSI
   {
+    # both protocols
+    {
+      csi.d <- as.matrix(dist(cbind(filter(veg_df)$Longitude, 
+                                        filter(veg_df)$Latitude)))
+      csi.d.inv <- 1/csi.d
+      diag(csi.d.inv) <- 0
+      csi.d.inv[1:5, 1:5] # inf values have same coords
+      csi.d.inv[is.infinite(csi.d.inv)] <- 0
+      
+      Moran.I(filter(veg_df)$CSI, csi.d.inv) # yes spatial autocorr
+    }
+    
     # terrestrial
     {
       ter.csi.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Terrestrial")$Longitude, 
@@ -521,6 +580,7 @@ rm(list=ls())
       
       Moran.I(filter(veg_df, Protocol=="Terrestrial")$CSI, ter.csi.d.inv) # yes spatial autocorr
     }
+    
     # wetland
     {
       wet.csi.d <- as.matrix(dist(cbind(filter(veg_df, Protocol=="Wetland")$Longitude, 
@@ -660,7 +720,7 @@ rm(list=ls())
   veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(totdist_percent),
-              meddist=median(totdist_percent),
+              med_dist=median(totdist_percent),
               IQR=IQR(totdist_percent))
   
   anova(lmer(totdist_percent ~ HFbin + 
@@ -675,7 +735,7 @@ rm(list=ls())
   veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(rich_observed),
-              medrich_observed=median(rich_observed),
+              med_rich_observed=median(rich_observed),
               IQR=IQR(rich_observed))
   
   ggplot(veg_df_3groups, aes(x=HFbin, y=rich_observed)) +
@@ -686,7 +746,7 @@ rm(list=ls())
   veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(propexotic  ),
-              medrich_observed=median(propexotic),
+              med_nonnatives=median(propexotic),
               IQR=IQR(propexotic ))
   
   ggplot(veg_df_3groups, aes(x=HFbin, y=propexotic)) +
@@ -697,7 +757,7 @@ rm(list=ls())
   veg_df_3groups %>% 
     group_by(HFbin) %>% 
     summarize(N=length(CSI),
-              medrich_observed=median(CSI),
+              med_csi=median(CSI),
               IQR=IQR(CSI))
   
   ggplot(veg_df_3groups, aes(x=HFbin, y=CSI)) +
