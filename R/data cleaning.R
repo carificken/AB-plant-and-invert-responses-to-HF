@@ -1260,6 +1260,7 @@ hf <- left_join(hf,
             distinct(UniqueID, Transect) %>% 
             group_by(UniqueID) %>% 
             tally() #  num of transects per site/year
+          
           wet_vascplant_pa <- wet_vascplant_pa %>% 
             mutate(PA=1) %>% 
             group_by(UniqueID, Transect) %>% 
@@ -1285,7 +1286,15 @@ hf <- left_join(hf,
             distinct(UniqueID, Transect) %>% 
             group_by(UniqueID) %>% 
             tally() %>%
-            filter(n==5) %>% nrow()
+            arrange(desc(n))
+          
+          # how many sites with 5 transects (the most common num of transects)
+          wet_vascplant_pa %>% 
+            distinct(UniqueID, Transect) %>% 
+            group_by(UniqueID) %>% 
+            tally() %>%
+            filter(n==5) %>% 
+            nrow()
           
         }
         
