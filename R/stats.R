@@ -290,7 +290,7 @@ rm(list=ls())
     anova(rich.poly, rich.poly.exot.interaction)
     
     piecewiseSEM::rsquared(rich.poly.exot.interaction) # best model
-    
+    AIC(rich.poly.exot.interaction) - AIC(rich.poly)
   }
   
   # terrestrial protocol
