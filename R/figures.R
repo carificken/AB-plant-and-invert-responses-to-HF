@@ -69,29 +69,37 @@ rm(list=ls())
     theme(legend.position = "top") + font_sizes
   
   fig1a
+  
+  # colored by protocol
+  ggplot(veg_df, aes(x=totdist_percent, y=rich_observed, color=Protocol)) +
+    labs(x="Total Human Development (%)", y="Species Richness") +
+    geom_point(alpha=0.5) + 
+    geom_smooth(data=veg_df, aes(x=totdist_percent, y=rich_observed, color=Protocol), 
+                method="lm", formula=y~poly(x,2, raw=T), se=F, size=1) +
+    facet_wrap(~Protocol) +
+    theme_classic() +
+    theme(legend.position = "top") + font_sizes  
 
   # colored and faceted by NR
-  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+  ggplot(veg_df, aes(x=totdist_percent, y=rich_observed, color=Protocol)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
-    geom_point(alpha=0.5, aes(color=NRNAME), show.legend = F) + 
+    geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
-    geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
-    # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-    #             method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    geom_smooth(data=veg_df, aes(x=totdist_percent, y=rich_observed, color=Protocol), 
+                method="lm", formula=y~poly(x,2, raw=T), se=F, size=1) +
     facet_wrap(~NRNAME) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes
   
   # colored and faceted by wetland class
-  ggplot(spR, aes(x=totdist_percent, y=rich)) +
+  veg_df %>% 
+    filter(WetlandType!="Alkali Fen") %>% 
+    ggplot(., aes(x=totdist_percent, y=rich_observed, color=Protocol)) +
     labs(x="Total Human Development (%)", y="Species Richness") +
-    geom_point(alpha=0.5, aes(color=WetlandType), show.legend = F) + 
+    geom_point(alpha=0.5) + 
     geom_smooth(method="lm", formula=y~poly(x,2, raw=T), se=F, color=1) +
-    geom_smooth(method="lm", se=F, color=1, linetype="dashed") +
-    # geom_smooth(data=spR, aes(x=totdist_percent, y=rich, linetype=Protocol), 
-    #             method="lm", formula=y~poly(x,2, raw=T), se=F, color=1, size=0.5) +
-    scale_linetype_manual(values=c("dashed", "dotdash")) +
+    geom_smooth(data=filter(veg_df, WetlandType!="Alkali Fen"), aes(x=totdist_percent, y=rich_observed, color=Protocol), 
+                method="lm", formula=y~poly(x,2, raw=T), se=F, size=1) +
     facet_wrap(~WetlandType) +
     theme_classic() +
     theme(legend.position = "top") + font_sizes

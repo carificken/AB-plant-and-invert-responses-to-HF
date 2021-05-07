@@ -1317,6 +1317,7 @@ hf <- left_join(hf,
       # terrestrial protocol
       median(div.out.ter$Species)  # median observed richness
       median(div.out.ter$chao-div.out.ter$chao.se) # median lower bound for true richness
+      median(div.out.ter$chao+div.out.ter$chao.se) # median upper bound for true richness
       
       # compute the average % of underestimation
       div.out.ter %>% 
@@ -1334,21 +1335,22 @@ hf <- left_join(hf,
       
       mean(div.out.ter$chao.se)
       ter.chao <- ggplot(div.out.ter) +
-        geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="red", alpha=0.5) +
+        geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=chao), color="blue", alpha=0.5) +
         geom_linerange(aes(x = reorder(as.factor(UniqueID), Species, min), 
                            ymin=chao-chao.se,
-                           ymax=chao+chao.se), color="red", alpha=0.5) +
+                           ymax=chao+chao.se), color="blue", alpha=0.5) +
         # geom_point(aes(x=reorder(as.factor(UniqueID), Species, min), y=Species)) +
         geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
                       y=Species, group=1)) +
         labs(x="Terrestrial Protocol Sites", y="Species (Num.)") +
-        ggtitle("Extrapolated Richness (Chao)") +
-        theme(axis.text.x = element_blank()) +
-        lims(y=c(0,150))
+        ggtitle("Estimated (True) Richness (Chao)") +
+        theme_classic() +
+        theme(axis.text.x = element_blank()) 
       
       # wetland protocol
       median(div.out$Species) # median observed richness
       median(div.out$chao-div.out$chao.se) # median lower bound for true richness
+      median(div.out$chao+div.out$chao.se) # median upper bound for true richness
       
       # compute the average % of underestimation
       div.out %>% 
@@ -1373,10 +1375,22 @@ hf <- left_join(hf,
         geom_line(aes(x=reorder(as.factor(UniqueID), Species, min), 
                       y=Species, group=1)) +
         labs(x="Wetland Protocol Sites", y="Species (Num.)") +
-        ggtitle("Extrapolated Richness (Chao)") +
-        theme(axis.text.x = element_blank()) +
-        lims(y=c(0,100))
+        ggtitle("Estimated (True) Richness (Chao)") +
+        theme_classic() +
+        theme(axis.text.x = element_blank()) 
       
+      # plot both protocols
+      underestimation_plot <- cowplot::plot_grid(ter.chao + theme(plot.title = element_blank()), 
+                         wet.chao + theme(plot.title = element_blank()), 
+                         ncol=2)
+      # ggsave(
+      #   plot=underestimation_plot,
+      #   filename = "manuscript/round_two/si_fig_chao_estimates.jpg", 
+      #   dpi=300, 
+      #   width = 6, 
+      #   height=4, 
+      #   units="in"
+      #   )
       
       # compare underestimation for two protocols
       ter_underestimation <- div.out.ter %>% 
