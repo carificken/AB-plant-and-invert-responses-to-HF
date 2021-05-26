@@ -1,7 +1,15 @@
+# ignore data from ABMI
 GIS layers/
-.Rproj.user
-ms draft.docx
 data/
-manuscript/
 AB plant responses to HF - ABMI sampling sites.qgz
+
+# ignore unpublished ms files
+
+ms draft.docx
+manuscript/
+
+# ignore unneeded files
 .Rhistory
+.Rproj.user
+ABMI_MC_SOP004_Site_Naming_draft_Version 1.1CC.docx
+Theory and background lit to frame plant.docx
